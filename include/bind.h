@@ -449,12 +449,12 @@ public:
             )");
 
         def("train", &GraphSolver::train, py::no_gil(),
-            py::arg("model") = "LINE", py::arg("num_epoch") = 2000, py::arg("augmentation_step") = 5,
-            py::arg("random_walk_length") = 40, py::arg("random_walk_batch_size") = 100,
-            py::arg("shuffle_base") = graphvite::kAuto, py::arg("p") = 1, py::arg("q") = 1,
-            py::arg("positive_reuse") = 1, py::arg("negative_sample_exponent") = 0.75, py::arg("negative_weight") = 5,
-            py::arg("log_frequency") = 1000,
-            "train(model='LINE', num_epoch=2000, augmentation_step=5, random_walk_length=40, "
+            py::arg("model") = "LINE", py::arg("num_epoch") = 2000, py::arg("resume") = false,
+            py::arg("augmentation_step") = 5, py::arg("random_walk_length") = 40,
+            py::arg("random_walk_batch_size") = 100, py::arg("shuffle_base") = graphvite::kAuto, py::arg("p") = 1,
+            py::arg("q") = 1, py::arg("positive_reuse") = 1, py::arg("negative_sample_exponent") = 0.75,
+            py::arg("negative_weight") = 5, py::arg("log_frequency") = 1000,
+            "train(model='LINE', num_epoch=2000, resume=False, augmentation_step=5, random_walk_length=40, "
                   "random_walk_batch_size=100, shuffle_base=auto, p=1, q=1, positive_reuse=1, "
                   "negative_sample_exponent=0.75, negative_weight=5, log_frequency=1000)"
             R"(
@@ -463,6 +463,7 @@ public:
             Parameters:
                 model (str, optional): 'DeepWalk', 'LINE' or 'node2vec'
                 num_epoch (int, optional): number of epochs, i.e. #positive edges / \|E\|
+                resume (bool, optional): resume training from learned embeddings or not
                 augmentation_step (int, optional):
                     node pairs with distance <= augmentation_step are considered as positive samples
                 random_walk_length (int, optional): length of each random walk
@@ -562,17 +563,18 @@ public:
             )");
 
         def("train", &KnowledgeGraphSolver::train, py::no_gil(),
-            py::arg("model") = "RotatE", py::arg("num_epoch") = 2000, py::arg("margin") = 24,
+            py::arg("model") = "RotatE", py::arg("num_epoch") = 2000, py::arg("resume") = false, py::arg("margin") = 24,
             py::arg("l3_regularization") = 2e-3, py::arg("sample_batch_size") = 2000, py::arg("positive_reuse") = 1,
             py::arg("adversarial_temperature") = 2, py::arg("log_frequency") = 100,
-            "train(model='RotatE', num_epoch=2000, margin=24, l3_regulariation=2e-3, sample_batch_size=2000, "
-                  "positive_reuse=1, adversarial_temperature=2, log_frequency=100)"
+            "train(model='RotatE', num_epoch=2000, resume=False, margin=24, l3_regulariation=2e-3, "
+                  "sample_batch_size=2000, positive_reuse=1, adversarial_temperature=2, log_frequency=100)"
             R"(
             Train knowledge graph embeddings.
 
             Parameters:
                 model (str, optional): 'TransE', 'DistMult', 'ComplEx', 'SimplE' or 'RotatE'
                 num_epoch (int, optional): number of epochs, i.e. #positive edges / \|E\|
+                resume (bool, optional): resume training from learned embeddings or not
                 margin (float, optional): logit margin (for TransE & RotatE)
                 l3_regularization (float, optional): L3 regularization (for DistMult, ComplEx & SimplE)
                 sample_batch_size (int, optional): batch size of samples in samplers
@@ -665,10 +667,10 @@ public:
             )");
 
         def("train", &VisualizationSolver::train, py::no_gil(),
-            py::arg("model") = "LargeVis", py::arg("num_epoch") = 50, py::arg("sample_batch_size") = 2000,
-            py::arg("positive_reuse") = 5, py::arg("negative_sample_exponent") = 0.75, py::arg("negative_weight") = 3,
-            py::arg("log_frequency") = 1000,
-            "train(model='LargeVis', num_epoch=100, sample_batch_size=2000, positive_reuse=1, "
+            py::arg("model") = "LargeVis", py::arg("num_epoch") = 50, py::arg("resume") = false,
+            py::arg("sample_batch_size") = 2000, py::arg("positive_reuse") = 5,
+            py::arg("negative_sample_exponent") = 0.75, py::arg("negative_weight") = 3, py::arg("log_frequency") = 1000,
+            "train(model='LargeVis', num_epoch=100, resume=False, sample_batch_size=2000, positive_reuse=1, "
                   "negative_sample_exponent=0.75, negative_weight=3, log_frequency=1000)"
             R"(
             Train visualization.
@@ -676,6 +678,7 @@ public:
             Parameters:
                 model (str, optional): 'LargeVis'
                 num_epoch (int, optional): number of epochs, i.e. #positive edges / \|E\|
+                resume (bool, optional): resume training from learned embeddings or not
                 sample_batch_size (int, optional): batch size of samples in samplers
                 positive_reuse (int, optional): times of reusing positive samples
                 negative_sample_epoxnent (float, optional): exponent of degrees in negative sampling

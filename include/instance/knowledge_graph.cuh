@@ -550,6 +550,7 @@ public:
         ss << "model: " << model << std::endl;
         ss << optimizer.info() << std::endl;
         ss << "#epoch: " << num_epoch << ", batch size: " << batch_size << std::endl;
+        ss << "resume: " << pretty::yes_no(resume) << std::endl;
         if (model == "TransE" || model == "RotatE")
             ss << "margin: " << margin << ", positive reuse: " << positive_reuse << std::endl;
         if (model == "DistMult" || model == "ComplEx" || model == "SimplE")
@@ -562,6 +563,7 @@ public:
      * @brief Train knowledge graph embeddings
      * @param _model "TransE", "DistMult", "ComplEx", "SimplE" or "RotatE"
      * @param _num_epoch number of epochs, i.e. #positive edges / |E|
+     * @param _resume resume training from learned embeddings or not
      * @param _margin logit margin (for TransE & RotatE)
      * @param _l3_regularization l3 regularization (for DistMult, ComplEx & SimplE)
      * @param _sample_batch_size batch size of samples in samplers
@@ -570,14 +572,15 @@ public:
      *     disabled when set to non-positive value
      * @param _log_frequency log every log_frequency batches
      */
-    void train(const std::string &_model = "RotatE", int _num_epoch = 2000, float _margin = 24,
-               float _l3_regularization = 2e-3, int _sample_batch_size = 2000,
-               int _positive_reuse = 1, float _adversarial_temperature = 2, int _log_frequency = 100) {
+    void train(const std::string &_model = "RotatE", int _num_epoch = 2000, bool _resume = false, float _margin = 24,
+               float _l3_regularization = 2e-3, int _sample_batch_size = 2000, int _positive_reuse = 1,
+               float _adversarial_temperature = 2, int _log_frequency = 100) {
         margin = _margin;
         l3_regularization = _l3_regularization;
         adversarial_temperature = _adversarial_temperature;
 
-        Base::train(_model, _num_epoch, _sample_batch_size, _positive_reuse, 0, 1.0f / num_negative, _log_frequency);
+        Base::train(_model, _num_epoch, _resume, _sample_batch_size, _positive_reuse, 0, 1.0f / num_negative,
+                    _log_frequency);
     }
 };
 

@@ -99,7 +99,7 @@ public:
     float negative_sample_exponent, negative_weight;
     int num_epoch, episode_size, batch_size, positive_reuse;
     int log_frequency;
-    bool shuffle_partition, naive_parallel;
+    bool shuffle_partition, naive_parallel, resume;
     int assignment_offset;
     std::vector<std::shared_ptr<std::vector<Vector>>> embeddings;
     std::vector<std::shared_ptr<std::vector<std::vector<Vector>>>> moments;
@@ -143,6 +143,7 @@ public:
     using type::negative_sample_exponent; \
     using type::negative_weight; \
     using type::num_epoch; \
+    using type::resume; \
     using type::episode_size; \
     using type::batch_size; \
     using type::optimizer; \
@@ -283,6 +284,7 @@ public:
                 << ", but " << batch_size << " is specified";
         episode_size = _episode_size;
         available_models = get_available_models();
+        batch_id = 0;
 
         // build embeddings & moments
         protocols = get_protocols();
@@ -338,8 +340,6 @@ public:
                 << "The negative sampler can't be binded to global range and any partition at the same time";
 
         build_alias();
-        init_embeddings();
-        init_moments();
 
         auto min_partition = get_min_partition();
         if (num_partition == kAuto) {
@@ -442,6 +442,7 @@ public:
         ss << "model: " << model << std::endl;
         ss << optimizer.info() << std::endl;
         ss << "#epoch: " << num_epoch << ", batch size: " << batch_size << std::endl;
+        ss << "resume: " << pretty::yes_no(resume) << std::endl;
         ss << "positive reuse: " << positive_reuse << ", negative weight: " << negative_weight;
         return ss.str();
     }
@@ -522,18 +523,21 @@ public:
      * @brief Train graph embeddings
      * @param _model model
      * @param _num_epoch number of epochs, i.e. #positive edges / |E|
+     * @param _resume resume training from learned embeddings or not
      * @param _sample_batch_size batch size of samples in samplers
      * @param _positive_reuse times of reusing positive samples
      * @param _negative_sample_exponent exponent of degrees in negative sampling
      * @param _negative_weight weight for each negative sample
      * @param _log_frequency log every log_frequency batches
      */
-    void train(const std::string &_model, int _num_epoch = 2000, int _sample_batch_size = 2000, int _positive_reuse = 1,
-               float _negative_sample_exponent = 0.75, float _negative_weight = 5, int _log_frequency = 1000) {
+    void train(const std::string &_model, int _num_epoch = 2000, bool _resume = false, int _sample_batch_size = 2000,
+               int _positive_reuse = 1, float _negative_sample_exponent = 0.75, float _negative_weight = 5,
+               int _log_frequency = 1000) {
         CHECK(graph) << "The model must be built on a graph first";
         model = _model;
         CHECK(available_models.find(model) != available_models.end()) << "Invalid model `" << model << "`";
         num_epoch = _num_epoch;
+        resume = _resume;
         sample_batch_size = _sample_batch_size;
         positive_reuse = _positive_reuse;
         negative_sample_exponent = _negative_sample_exponent;
@@ -544,9 +548,12 @@ public:
         log_frequency = _log_frequency;
 
         LOG(WARNING) << pretty::block(info());
-
-        batch_id = 0;
-        num_batch = num_epoch * num_edge / batch_size;
+        if (!resume) {
+            init_embeddings();
+            init_moments();
+            batch_id = 0;
+        }
+        num_batch = batch_id + num_epoch * num_edge / batch_size;
 
         std::vector<std::thread> sample_threads(num_sampler);
         std::vector<std::thread> worker_threads(num_worker);

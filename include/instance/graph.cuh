@@ -714,6 +714,7 @@ public:
      * @brief Train node embeddings
      * @param _model "DeepWalk", "LINE" or "node2vec"
      * @param _num_epoch number of epochs, i.e. #positive edges / |E|
+     * @param _resume resume training from learned embeddings or not
      * @param _augmentation_step node pairs with distance <= augmentation_step are considered as positive samples
      * @param _random_walk_length length of each random walk
      * @param _random_walk_batch_size batch size of random walks in samplers
@@ -725,10 +726,10 @@ public:
      * @param _negative_weight weight for each negative sample
      * @param _log_frequency log every log_frequency batches
      */
-    void train(const std::string &_model = "LINE", int _num_epoch = 2000, int _augmentation_step = 5,
-               int _random_walk_length = 40, int _random_walk_batch_size = 100, int _shuffle_base = kAuto,
-               float _p = 1, float _q = 1, int _positive_reuse = 1, float _negative_sample_exponent = 0.75,
-               float _negative_weight = 5, int _log_frequency = 1000) {
+    void train(const std::string &_model = "LINE", int _num_epoch = 2000, bool _resume = false,
+               int _augmentation_step = 5, int _random_walk_length = 40, int _random_walk_batch_size = 100,
+               int _shuffle_base = kAuto, float _p = 1, float _q = 1, int _positive_reuse = 1,
+               float _negative_sample_exponent = 0.75, float _negative_weight = 5, int _log_frequency = 1000) {
         augmentation_step = _augmentation_step;
         random_walk_length = _random_walk_length;
         random_walk_batch_size = _random_walk_batch_size;
@@ -744,7 +745,7 @@ public:
         CHECK(augmentation_step <= random_walk_length)
                 << "`random_walk_length` should be no less than `augmentation_step`";
 
-        Base::train(_model, _num_epoch, random_walk_length * random_walk_batch_size, _positive_reuse,
+        Base::train(_model, _num_epoch, _resume, random_walk_length * random_walk_batch_size, _positive_reuse,
                     _negative_sample_exponent, _negative_weight, _log_frequency);
     }
 

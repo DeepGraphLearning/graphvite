@@ -177,7 +177,9 @@ Citation
 --------
 
 If you find GraphVite useful for your research or development, please cite the
-following paper.
+following [paper].
+
+[paper]: https://arxiv.org/pdf/1903.00757.pdf
 
 ```
 @inproceedings{zhu2019graphvite,

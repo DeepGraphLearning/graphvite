@@ -526,16 +526,17 @@ public:
      * @brief Train visualization
      * @param _model "LargeVis"
      * @param _num_epoch number of epochs, i.e. #positive edges / |E|
+     * @param _resume resume training from learned embeddings or not
      * @param _sample_batch_size batch size of samples in samplers
      * @param _positive_reuse times of reusing positive samples
      * @param _negative_sample_exponent exponent of degrees in negative sampling
      * @param _negative_weight weight for each negative sample
      * @param _log_frequency log every log_frequency batches
      */
-    void train(const std::string &_model = "LargeVis", int _num_epoch = 50, int _sample_batch_size = 2000,
-               int _positive_reuse = 5, float _negative_sample_exponent = 0.75, float _negative_weight = 3,
-               int _log_frequency = 1000) {
-        Base::train(_model, _num_epoch, _sample_batch_size, _positive_reuse, _negative_sample_exponent,
+    void train(const std::string &_model = "LargeVis", int _num_epoch = 50, bool _resume = false,
+               int _sample_batch_size = 2000, int _positive_reuse = 5, float _negative_sample_exponent = 0.75,
+               float _negative_weight = 3, int _log_frequency = 1000) {
+        Base::train(_model, _num_epoch, _resume, _sample_batch_size, _positive_reuse, _negative_sample_exponent,
                     _negative_weight, _log_frequency);
     }
 };
