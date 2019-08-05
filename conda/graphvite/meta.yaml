@@ -1,0 +1,58 @@
+package:
+  name: graphvite
+  version: 0.1.0
+
+source:
+  path: ../..
+
+requirements:
+  build:
+    # cmake
+    - cmake
+    - {{ compiler("cxx") }}
+    - glog
+    - gflags
+    - cudatoolkit {{ cudatoolkit }}
+    - python {{ python }}
+    - pybind11
+  host:
+    # make
+    - glog
+    - gflags
+    - cudatoolkit {{ cudatoolkit }}
+    - python {{ python }}
+    - pybind11
+    - mkl >=2018
+    # setup
+    - numpy >=1.11
+    - pyyaml
+    - easydict
+    - six
+  run:
+    - glog
+    - gflags
+    - cudatoolkit
+    - python {{ python }}
+    - mkl >=2018
+    - numpy >=1.11
+    - pyyaml
+    - easydict
+    - six
+    - future
+    - imageio
+    - scipy
+    - matplotlib
+    - pytorch
+    - torchvision
+    - nltk
+
+build:
+  string: py{{ python|replace(".", "") }}cuda{{ cudatoolkit|replace(".", "") }}
+
+test:
+  imports:
+    - graphvite
+
+about:
+  home: https://graphvite.io
+  license: Apache-2.0

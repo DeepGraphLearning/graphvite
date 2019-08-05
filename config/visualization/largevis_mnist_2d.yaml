@@ -1,0 +1,36 @@
+application:
+  visualization
+
+resource:
+  gpus: [0]
+  cpu_per_gpu: auto
+  dim: 2
+
+graph:
+  vectors: <mnist.image_data>
+  num_neighbor: 200
+  perplexity: 20
+
+build:
+  optimizer:
+    type: Adam
+    lr: 0.5
+    weight_decay: 1.0e-5
+  num_partition: auto
+  num_negative: 5
+  batch_size: 100000
+  episode_size: 200
+
+train:
+  model: LargeVis
+  num_epoch: 50
+  negative_weight: 3
+  log_frequency: 1000
+
+evaluate:
+  task: visualization
+  Y: <mnist.label_data>
+  save_file: mnist_2d.png
+
+save:
+  file_name: largevis_mnist_2d.pkl

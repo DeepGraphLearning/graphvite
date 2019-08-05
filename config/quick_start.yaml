@@ -1,0 +1,39 @@
+application:
+  graph
+
+resource:
+  gpus: [0]
+  cpu_per_gpu: 8
+  dim: 128
+
+graph:
+  file_name: <blogcatalog.train>
+  as_undirected: true
+
+build:
+  optimizer:
+    type: SGD
+    lr: 0.025
+    weight_decay: 0.005
+  num_partition: auto
+  num_negative: 1
+  batch_size: 100000
+  episode_size: 500
+
+train:
+  model: LINE
+  num_epoch: 2000
+  negative_weight: 5
+  augmentation_step: 2
+  random_walk_length: 40
+  random_walk_batch_size: 100
+  log_frequency: 1000
+
+evaluate:
+  task: node classification
+  file_name: <blogcatalog.label>
+  portions: [0.2]
+  times: 1
+
+save:
+  file_name: line_blogcatalog.pkl

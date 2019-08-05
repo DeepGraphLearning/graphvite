@@ -1,0 +1,19 @@
+cxx_compiler_version:
+  - 5.4
+
+python:
+  - 2.7
+  - 3.5
+  - 3.6
+  - 3.7
+
+numpy:
+  - 1.11
+
+cudatoolkit:
+  - 9.2
+  - 10.0
+
+pin_run_as_build:
+  cudatoolkit:
+    max_pin: x.x

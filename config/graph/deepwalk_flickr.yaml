@@ -1,0 +1,41 @@
+application:
+  graph
+
+resource:
+  gpus: []
+  cpu_per_gpu: auto
+  dim: 128
+
+graph:
+  file_name: <flickr.train>
+  as_undirected: true
+
+build:
+  optimizer:
+    type: SGD
+    lr: 0.025
+    weight_decay: 0.005
+  num_partition: auto
+  num_negative: 1
+  batch_size: 100000
+  episode_size: 1000
+
+train:
+  # here the best setting uses no augmentation
+  # in this case, DeepWalk is equal to LINE
+  model: DeepWalk
+  num_epoch: 2000
+  negative_weight: 5
+  augmentation_step: 1
+  random_walk_length: 40
+  random_walk_batch_size: 100
+  log_frequency: 1000
+
+evaluate:
+  task: node classification
+  file_name: <flickr.label>
+  portions: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  times: 5
+
+save:
+  file_name: deepwalk_flickr.pkl

@@ -1,0 +1,38 @@
+application:
+  graph
+
+resource:
+  gpus: []
+  cpu_per_gpu: auto
+  dim: 128
+
+graph:
+  file_name: <hyperlink2012.pld_train>
+  as_undirected: true
+
+build:
+  optimizer:
+    type: SGD
+    lr: 0.025
+    weight_decay: 0.005
+  num_partition: auto
+  num_negative: 1
+  batch_size: 100000
+  episode_size: 5000
+
+train:
+  model: LINE
+  num_epoch: 2000
+  negative_weight: 5
+  augmentation_step: 2
+  random_walk_length: 40
+  random_walk_batch_size: 100
+  log_frequency: 1000
+
+evaluate:
+  task: link prediction
+  file_name: <hyperlink2012.pld_test>
+  filter_file: <hyperlink2012.pld_train>
+
+save:
+  file_name: line_hyperlink-pld.pkl

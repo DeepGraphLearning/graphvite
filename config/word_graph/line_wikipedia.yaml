@@ -1,0 +1,34 @@
+application:
+  word_graph
+
+resource:
+  gpus: []
+  cpu_per_gpu: auto
+  dim: 128
+
+graph:
+  file_name: <wikipedia.train>
+  window: 5
+  min_count: 5
+
+build:
+  optimizer:
+    type: SGD
+    lr: 0.025
+    weight_decay: 0.005
+  num_partition: 0
+  num_negative: 1
+  batch_size: 100000
+  episode_size: 1000
+
+train:
+  model: LINE
+  num_epoch: 80
+  negative_weight: 5
+  augmentation_step: 1
+  random_walk_length: 40
+  random_walk_batch_size: 100
+  log_frequency: 1000
+
+save:
+  file_name: line_wikipedia.pkl

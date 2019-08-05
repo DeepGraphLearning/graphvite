@@ -1,0 +1,24 @@
+# cmake
+cmake >=3.12
+cxx-compiler >=5.4
+glog
+gflags
+cudatoolkit >=9.2
+python
+pybind11
+
+# make
+mkl >=2018
+
+# run
+numpy >=1.11
+pyyaml
+conda-forge::easydict
+six
+future
+imageio
+scipy
+matplotlib
+pytorch
+torchvision
+nltk

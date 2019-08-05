@@ -1,0 +1,37 @@
+application:
+  visualization
+
+resource:
+  gpus: [0]
+  cpu_per_gpu: auto
+  dim: 2
+
+graph:
+  vectors: <imagenet.feature_data>
+  num_neighbor: 200
+  perplexity: 50
+
+build:
+  optimizer:
+    type: Adam
+    lr: 0.5
+    weight_decay: 1.0e-5
+  num_partition: auto
+  num_negative: 5
+  batch_size: 100000
+  episode_size: 200
+
+train:
+  model: LargeVis
+  num_epoch: 50
+  negative_weight: 3
+  log_frequency: 1000
+
+evaluate:
+  task: hierarchy
+  file_name: <imagenet.hierarchical_label>
+  target: english_setter
+  save_file: imagenet_hierarchy.gif
+
+save:
+  file_name: largevis_imagenet_2d.pkl
