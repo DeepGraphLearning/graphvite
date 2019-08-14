@@ -1,6 +1,6 @@
 # cmake
 cmake >=3.12
-cxx-compiler >=5.4
+gxx_linux-64 >=5.4
 glog
 gflags
 cudatoolkit >=9.2
