@@ -1400,7 +1400,7 @@ __global__ void train(Memory<Vector, Index> head_embeddings, Memory<Vector, Inde
                 // Forward
                 Float x = 0;
                 for (int i = lane_id; i < dim; i += kWarpSize) {
-                    Float j = i ^ 1;
+                    Index j = i ^ 1;
                     x += head[i] * relation[i] * tail[j];
                 }
                 x = WarpBroadcast(WarpReduce(x), 0);
@@ -1429,7 +1429,7 @@ __global__ void train(Memory<Vector, Index> head_embeddings, Memory<Vector, Inde
             // Forward
             Float x = 0;
             for (int i = lane_id; i < dim; i += kWarpSize) {
-                Float j = i ^1;
+                Index j = i ^ 1;
                 x += head[i] * relation[i] * tail[j];
             }
             x = WarpBroadcast(WarpReduce(x), 0);
@@ -1453,7 +1453,7 @@ __global__ void train(Memory<Vector, Index> head_embeddings, Memory<Vector, Inde
 #endif
             }
             for (int i = lane_id; i < dim; i += kWarpSize) {
-                Float j = i ^1;
+                Index j = i ^ 1;
                 Float h = head[i];
                 Float r = relation[i];
                 Float t = tail[j];
@@ -1532,7 +1532,7 @@ __global__ void train_1_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
                 // Forward
                 Float x = 0;
                 for (int i = lane_id; i < dim; i += kWarpSize) {
-                    Float j = i ^ 1;
+                    Index j = i ^ 1;
                     x += head[i] * relation[i] * tail[j];
                 }
                 x = WarpBroadcast(WarpReduce(x), 0);
@@ -1563,7 +1563,7 @@ __global__ void train_1_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
             // Forward
             Float x = 0;
             for (int i = lane_id; i < dim; i += kWarpSize) {
-                Float j = i ^1;
+                Index j = i ^ 1;
                 x += head[i] * relation[i] * tail[j];
             }
             x = WarpBroadcast(WarpReduce(x), 0);
@@ -1587,7 +1587,7 @@ __global__ void train_1_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
 #endif
             }
             for (int i = lane_id; i < dim; i += kWarpSize) {
-                Float j = i ^1;
+                Index j = i ^ 1;
                 Float h = head[i];
                 Float r = relation[i];
                 Float t = tail[j];
@@ -1670,7 +1670,7 @@ __global__ void train_2_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
                 // Forward
                 Float x = 0;
                 for (int i = lane_id; i < dim; i += kWarpSize) {
-                    Float j = i ^ 1;
+                    Index j = i ^ 1;
                     x += head[i] * relation[i] * tail[j];
                 }
                 x = WarpBroadcast(WarpReduce(x), 0);
@@ -1703,7 +1703,7 @@ __global__ void train_2_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
             // Forward
             Float x = 0;
             for (int i = lane_id; i < dim; i += kWarpSize) {
-                Float j = i ^1;
+                Index j = i ^ 1;
                 x += head[i] * relation[i] * tail[j];
             }
             x = WarpBroadcast(WarpReduce(x), 0);
@@ -1727,7 +1727,7 @@ __global__ void train_2_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
 #endif
             }
             for (int i = lane_id; i < dim; i += kWarpSize) {
-                Float j = i ^1;
+                Index j = i ^ 1;
                 Float h = head[i];
                 Float r = relation[i];
                 Float t = tail[j];
