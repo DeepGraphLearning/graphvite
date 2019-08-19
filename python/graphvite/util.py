@@ -24,6 +24,7 @@ from functools import wraps
 
 logger = logging.getLogger(__name__)
 
+
 def recursive_default(obj, default):
     if isinstance(default, dict):
         new_obj = {}
@@ -120,5 +121,6 @@ class Monitor(object):
             return result
 
         return wrapper
+
 
 monitor = Monitor()

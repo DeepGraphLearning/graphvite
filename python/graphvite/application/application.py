@@ -32,6 +32,7 @@ from ..util import monitor
 
 logger = logging.getLogger(__name__)
 
+
 class ApplicationMixin(object):
     """
     General interface of graph applications.
@@ -149,10 +150,14 @@ class ApplicationMixin(object):
         for i, setting in enumerate(settings):
             new_settings.append(setting + (gpus[i % len(gpus)],))
         settings = new_settings
+
         try:
-            multiprocessing.set_start_method("spawn")
+            start_method = multiprocessing.get_start_method()
+            # if there are other running processes, this could cause leakage of semaphores
+            multiprocessing.set_start_method("spawn", force=True)
             pool = multiprocessing.Pool(len(gpus))
             results = pool.map(func, settings, chunksize=1)
+            multiprocessing.set_start_method(start_method, force=True)
         except AttributeError:
             logger.info("Spawn mode is not supported by multiprocessing. Switch to serial execution.")
             results = list(map(func, settings))

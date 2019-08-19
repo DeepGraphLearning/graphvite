@@ -78,7 +78,7 @@ Requirements
 
 Generally, GraphVite works on any Linux distribution with CUDA >= 9.2.
 
-The library is compatible with Python 2.7 and 3.5/3.6/3.7.
+The library is compatible with Python 2.7 and 3.6/3.7.
 
 Installation
 ------------
@@ -88,14 +88,16 @@ Installation
 GraphVite can be installed through conda with only one line.
 
 ```bash
-conda install -c milagraph graphvite
+conda install -c milagraph graphvite cudatoolkit=x.x
 ```
+
+where `x.x` is your CUDA version, e.g. 9.2 or 10.0.
 
 If you only need embedding training without evaluation, you can use the following
 alternative with minimal dependencies.
 
 ```bash
-conda install -c milagraph graphvite-mini
+conda install -c milagraph graphvite-mini cudatoolkit=x.x
 ```
 
 ### From Source ###

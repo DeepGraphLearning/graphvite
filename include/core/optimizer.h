@@ -192,7 +192,7 @@ public:
     template<class Float>
     __device__ inline Float rmsprop_update(Float parameter, Float gradient, Float &moment1, Float weight = 1) const {
         Float regularized = weight * (gradient + weight_decay * parameter);
-        moment1 = alpha * moment1 + (1 - momentum) * regularized * regularized;
+        moment1 = alpha * moment1 + (1 - alpha) * regularized * regularized;
         return lr * regularized / sqrt(moment1 + epsilon);
     }
 

@@ -23,6 +23,7 @@ import numpy as np
 import torch
 from torch import nn
 
+
 class NodeClassifier(nn.Module):
     """
     Node classification network for graphs

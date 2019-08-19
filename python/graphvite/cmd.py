@@ -132,7 +132,7 @@ def visualize_main(args):
     gv.init_logging(logging.WARNING)
 
     app = gap.VisualizationApplication(args.dim, [0])
-    app.load(vectors, perplexity=args.perplexity)
+    app.load(vectors=vectors, perplexity=args.perplexity)
     app.build()
     app.train()
     app.visualization(Y=labels, save_file=args.save)

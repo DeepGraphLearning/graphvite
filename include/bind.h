@@ -566,7 +566,7 @@ public:
             py::arg("model") = "RotatE", py::arg("num_epoch") = 2000, py::arg("resume") = false, py::arg("margin") = 24,
             py::arg("l3_regularization") = 2e-3, py::arg("sample_batch_size") = 2000, py::arg("positive_reuse") = 1,
             py::arg("adversarial_temperature") = 2, py::arg("log_frequency") = 100,
-            "train(model='RotatE', num_epoch=2000, resume=False, margin=24, l3_regulariation=2e-3, "
+            "train(model='RotatE', num_epoch=2000, resume=False, margin=24, l3_regularization=2e-3, "
                   "sample_batch_size=2000, positive_reuse=1, adversarial_temperature=2, log_frequency=100)"
             R"(
             Train knowledge graph embeddings.

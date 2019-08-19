@@ -56,6 +56,7 @@ from . import cfg
 
 logger = logging.getLogger(__name__)
 
+
 class Dataset(object):
     """
     Graph dataset.

@@ -24,6 +24,7 @@ from .helper import find_all_names
 
 module = sys.modules[__name__]
 
+
 class Optimizer(object):
     """
     Optimizer(type=auto, *args, **kwargs)

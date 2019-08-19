@@ -8,7 +8,7 @@ source:
 requirements:
   build:
     # cmake
-    - cmake
+    - cmake >=3.12
     - {{ compiler("cxx") }}
     - glog
     - gflags
@@ -22,9 +22,9 @@ requirements:
     - cudatoolkit {{ cudatoolkit }}
     - python {{ python }}
     - pybind11
+    - numpy {{ numpy }}
     - mkl >=2018
     # setup
-    - numpy >=1.11
     - pyyaml
     - easydict
     - six
@@ -47,7 +47,10 @@ requirements:
     - nltk
 
 build:
-  string: py{{ python|replace(".", "") }}cuda{{ cudatoolkit|replace(".", "") }}
+  string:
+    "py{{ python|replace('.', '') }}\
+    cuda{{ cudatoolkit|replace('.', '') }}\
+    h{{ environ.get('GIT_FULL_HASH')|string|truncate(7, True, '', 0) }}"
 
 test:
   imports:
@@ -56,3 +59,4 @@ test:
 about:
   home: https://graphvite.io
   license: Apache-2.0
+  summary: "A general and high-performance graph embedding system for various applications"

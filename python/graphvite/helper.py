@@ -22,6 +22,7 @@ import re
 from . import lib
 lib.name2dtype = {n: t for t, n in lib.dtype2name.items()}
 
+
 def signature(name, *args):
     strings = [name]
     for arg in args:
