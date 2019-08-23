@@ -168,12 +168,18 @@ have any suggestion to our library.
 Development Team
 ----------------
 
-GraphVite is developed by [MilaGraph], led by Prof. Jian Tang.
+GraphVite is developed by [MilaGraph], led by Prof. [Jian Tang].
 
-Authors of this project are Zhaocheng Zhu, Shizhen Xu, Meng Qu and Jian Tang.
-Contributors include Kunpeng Wang and Zhijian Duan.
+Authors of this project are [Zhaocheng Zhu], [Shizhen Xu], [Meng Qu] and [Jian Tang].
+Contributors include [Kunpeng Wang] and [Zhijian Duan].
 
 [MilaGraph]: https://github.com/DeepGraphLearning
+[Zhaocheng Zhu]: https://kiddozhu.github.io
+[Shizhen Xu]: https://github.com/xsz
+[Meng Qu]: https://mnqu.github.io
+[Jian Tang]: https://jian-tang.com
+[Kunpeng Wang]: https://github.com/Kwinpeng
+[Zhijian Duan]: https://github.com/zjduan
 
 Citation
 --------

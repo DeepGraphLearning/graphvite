@@ -310,7 +310,7 @@ public:
                 for (int j = 2; j <= solver->random_walk_length; j++)
                     if (!solver->graph->vertex_edges[current].empty()) {
                         Index neighbor_id = solver->edge_edge_tables[edge_id].sample(
-                                random[rand_id]++, random[rand_id]++);
+                                random[rand_id++], random[rand_id++]);
                         edge_id = solver->graph->flat_offsets[current] + neighbor_id;
                         current = std::get<0>(solver->graph->vertex_edges[current][neighbor_id]);
                         head_chains[i][j] = solver->head_locations[current];
