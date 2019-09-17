@@ -147,7 +147,6 @@ def baseline_main(args):
             file = os.path.join(path, file)
             match = True
             for keyword in args.keywords:
-                # print("(^|_)%s(_|$)" % keyword)
                 result = re.search("[/\_.]%s[/\_.]" % keyword, file)
                 if not result:
                     match = False

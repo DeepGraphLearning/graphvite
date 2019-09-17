@@ -16,7 +16,7 @@ build:
     type: SGD
     lr: 0.025
     weight_decay: 0.005
-  num_partition: 0
+  num_partition: auto
   num_negative: 1
   batch_size: 100000
   episode_size: 1000

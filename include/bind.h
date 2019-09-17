@@ -357,7 +357,7 @@ public:
                 vectors (2D array_like): vector list
                 num_neighbor (int, optional): number of neighbors for each node
                 perplexity (int, optional): perplexity for the neighborhood of each node
-                normalization (bool, optional): normalize the input vectors or not
+                vector_normalization (bool, optional): normalize the input vectors or not
                 delimiters (str, optional): string of delimiter characters
                 comment (str, optional): prefix of comment strings
             )");
@@ -563,10 +563,10 @@ public:
             )");
 
         def("train", &KnowledgeGraphSolver::train, py::no_gil(),
-            py::arg("model") = "RotatE", py::arg("num_epoch") = 2000, py::arg("resume") = false, py::arg("margin") = 24,
+            py::arg("model") = "RotatE", py::arg("num_epoch") = 2000, py::arg("resume") = false, py::arg("margin") = 12,
             py::arg("l3_regularization") = 2e-3, py::arg("sample_batch_size") = 2000, py::arg("positive_reuse") = 1,
             py::arg("adversarial_temperature") = 2, py::arg("log_frequency") = 100,
-            "train(model='RotatE', num_epoch=2000, resume=False, margin=24, l3_regularization=2e-3, "
+            "train(model='RotatE', num_epoch=2000, resume=False, margin=12, l3_regularization=2e-3, "
                   "sample_batch_size=2000, positive_reuse=1, adversarial_temperature=2, log_frequency=100)"
             R"(
             Train knowledge graph embeddings.
@@ -681,7 +681,7 @@ public:
                 resume (bool, optional): resume training from learned embeddings or not
                 sample_batch_size (int, optional): batch size of samples in samplers
                 positive_reuse (int, optional): times of reusing positive samples
-                negative_sample_epoxnent (float, optional): exponent of degrees in negative sampling
+                negative_sample_exponent (float, optional): exponent of degrees in negative sampling
                 negative_weight (float, optional): weight for each negative sample
                 log_frequency (int, optional): log every log_frequency batches
             )");

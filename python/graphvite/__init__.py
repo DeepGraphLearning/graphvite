@@ -24,11 +24,11 @@ import logging
 
 from . import util
 
-package_path = os.path.dirname(os.path.realpath(__file__))
+package_path = os.path.dirname(__file__)
 candidate_paths = [
-    os.path.join(package_path, "lib"),
-    os.path.join(package_path, "../../lib"),
-    os.path.join(package_path, "../../build/lib")
+    os.path.realpath(os.path.join(package_path, "lib")),
+    os.path.realpath(os.path.join(package_path, "../../lib")),
+    os.path.realpath(os.path.join(package_path, "../../build/lib"))
 ]
 lib_file = imp.find_module("libgraphvite", candidate_paths)[1]
 lib_path = os.path.dirname(lib_file)
