@@ -34,7 +34,7 @@ Here is a summary of the training time of GraphVite along with the best open-sou
 implementations on 3 applications. All the time is reported based on a server with
 24 CPU threads and 4 V100 GPUs.
 
-Node embedding on [Youtube] dataset.
+Training time of node embedding on [Youtube] dataset.
 
 | Model      | Existing Implementation       | GraphVite | Speedup |
 |------------|-------------------------------|-----------|---------|
@@ -50,12 +50,12 @@ Node embedding on [Youtube] dataset.
 [2]: https://github.com/tangjianpku/LINE
 [3]: https://github.com/aditya-grover/node2vec
 
-Knowledge graph embedding on [FB15k] dataset.
+Training / evaluation time of knowledge graph embedding on [FB15k] dataset.
 
-| Model           | Existing Implementation       | GraphVite | Speedup |
-|-----------------|-------------------------------|-----------|---------|
-| [TransE]        | [1.31 hrs (1 GPU)][3]         | 14.8 mins | 5.30x   |
-| [RotatE]        | [3.69 hrs (1 GPU)][4]         | 27.0 mins | 8.22x   |
+| Model           | Existing Implementation           | GraphVite          | Speedup       |
+|-----------------|-----------------------------------|--------------------|---------------|
+| [TransE]        | [1.31 hrs / 1.75 mins (1 GPU)][3] | 13.5 mins / 54.3 s | 5.82x / 1.93x |
+| [RotatE]        | [3.69 hrs / 4.19 mins (1 GPU)][4] | 28.1 mins / 55.8 s | 7.88x / 4.50x |
 
 [FB15k]: http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-relational-data.pdf
 [TransE]: http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-relational-data.pdf
@@ -63,11 +63,11 @@ Knowledge graph embedding on [FB15k] dataset.
 [3]: https://github.com/DeepGraphLearning/KnowledgeGraphEmbedding
 [4]: https://github.com/DeepGraphLearning/KnowledgeGraphEmbedding
 
-High-dimensional data visualization on [MNIST] dataset.
+Training time of high-dimensional data visualization on [MNIST] dataset.
 
 | Model        | Existing Implementation       | GraphVite | Speedup |
 |--------------|-------------------------------|-----------|---------|
-| [LargeVis]   | [15.3 mins (CPU parallel)][5] | 15.1 s    | 60.8x   |
+| [LargeVis]   | [15.3 mins (CPU parallel)][5] | 13.9 s    | 66.8x   |
 
 [MNIST]: http://yann.lecun.com/exdb/publis/pdf/lecun-01a.pdf
 [LargeVis]: https://arxiv.org/pdf/1602.00370.pdf
@@ -85,19 +85,15 @@ Installation
 
 ### From Conda ###
 
-GraphVite can be installed through conda with only one line.
-
 ```bash
-conda install -c milagraph graphvite cudatoolkit=x.x
+conda install -c milagraph graphvite cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
 ```
-
-where `x.x` is your CUDA version, e.g. 9.2 or 10.0.
 
 If you only need embedding training without evaluation, you can use the following
 alternative with minimal dependencies.
 
 ```bash
-conda install -c milagraph graphvite-mini cudatoolkit=x.x
+conda install -c milagraph graphvite-mini cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
 ```
 
 ### From Source ###
@@ -113,6 +109,24 @@ cd build && cmake .. && make && cd -
 cd python && python setup.py install && cd -
 ```
 
+### On Colab ###
+
+```bash
+!wget -c https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+!chmod +x Miniconda3-latest-Linux-x86_64.sh
+!./Miniconda3-latest-Linux-x86_64.sh -b -p /usr/local -f
+
+!conda install -y -c milagraph -c conda-forge graphvite \
+    python=3.6 cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+\.\d+")
+!conda install -y wurlitzer ipykernel
+```
+
+```python
+import site
+site.addsitedir("/usr/local/lib/python3.6/site-packages")
+%reload_ext wurlitzer
+```
+
 Quick Start
 -----------
 
@@ -126,10 +140,14 @@ Typically, the example takes no more than 1 minute. You will obtain some output 
 
 ```
 Batch id: 6000
-loss = 0.371641
+loss = 0.371041
 
-macro-F1@20%: 0.236794
-micro-F1@20%: 0.388110
+------------- link prediction --------------
+AUC: 0.899933
+
+----------- node classification ------------
+macro-F1@20%: 0.242114
+micro-F1@20%: 0.391342
 ```
 
 Baseline Benchmark
@@ -139,12 +157,29 @@ To reproduce a baseline benchmark, you only need to specify the keywords of the
 experiment. e.g. model and dataset.
 
 ```bash
-graphvite baseline [keyword ...] [--no-eval] [--gpu n] [--cpu m]
+graphvite baseline [keyword ...] [--no-eval] [--gpu n] [--cpu m] [--epoch e]
 ```
 
 You may also set the number of GPUs and the number of CPUs per GPU.
 
 Use ``graphvite list`` to get a list of available baselines.
+
+Custom Experiment
+-----------------
+
+Create a yaml configuration scaffold for graph, knowledge graph, visualization or
+word graph.
+
+```bash
+graphvite new [application ...] [--file f]
+```
+
+Fill some necessary entries in the configuration following the instructions. You
+can run the configuration by
+
+```bash
+graphvite run [config] [--no-eval] [--gpu n] [--cpu m] [--epoch e]
+```
 
 High-dimensional Data Visualization
 -----------------------------------
@@ -156,8 +191,8 @@ GraphVite.
 graphvite visualize [file] [--label label_file] [--save save_file] [--perplexity n] [--3d]
 ```
 
-The file can be either in numpy dump or text format. For the save file, we recommend
-to use a `png` format, while `pdf` is also supported.
+The file can be either a numpy dump `*.npy` or a text matrix `*.txt`. For the save
+file, we recommend to use `png` format, while `pdf` is also supported.
 
 Contributing
 ------------

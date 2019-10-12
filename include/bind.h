@@ -362,7 +362,7 @@ public:
                 comment (str, optional): prefix of comment strings
             )");
 
-        def("load", &KNNGraph::load, py::no_gil(),
+        def("load", &KNNGraph::load_numpy, py::no_gil(),
             py::arg("vectors"), py::arg("num_neighbor") = 200, py::arg("perplexity") = 30,
             py::arg("vector_normalization") = true);
 
@@ -404,16 +404,17 @@ public:
         // data members
         def_readonly("num_partition", &GraphSolver::num_partition);
         def_readonly("num_negative", &GraphSolver::num_negative);
-        def_readonly("augmentation_step", &GraphSolver::augmentation_step);
-        def_readonly("random_walk_length", &GraphSolver::random_walk_length);
-        def_readonly("random_walk_batch_size", &GraphSolver::random_walk_batch_size);
-        def_readonly("shuffle_base", &GraphSolver::shuffle_base);
         def_readonly("optimizer", &GraphSolver::optimizer);
         def_readonly("negative_sample_exponent", &GraphSolver::negative_sample_exponent);
         def_readonly("model", &GraphSolver::model);
         def_readonly("num_epoch", &GraphSolver::num_epoch);
         def_readonly("episode_size", &GraphSolver::episode_size);
         def_readonly("batch_size", &GraphSolver::batch_size);
+        def_readonly("augmentation_step", &GraphSolver::augmentation_step);
+        def_readonly("random_walk_length", &GraphSolver::random_walk_length);
+        def_readonly("random_walk_batch_size", &GraphSolver::random_walk_batch_size);
+        def_readonly("shuffle_base", &GraphSolver::shuffle_base);
+        def_readonly("positive_reuse", &GraphSolver::positive_reuse);
         def_readonly("log_frequency", &GraphSolver::log_frequency);
         def_readonly("num_worker", &GraphSolver::num_worker);
         def_readonly("num_sampler", &GraphSolver::num_sampler);
@@ -477,6 +478,16 @@ public:
                 log_frequency (int, optional): log every log_frequency batches
             )");
 
+        def("predict", &GraphSolver::predict_numpy, py::no_gil(),
+            py::arg("samples"),
+            "predict(samples)"
+            R"(
+            Predict logits for samples.
+
+            Parameters:
+                samples (ndarray): triplets with shape (?, 2), each triplet is ordered as (v, c)
+            )");
+
         def("clear", &GraphSolver::clear, py::no_gil(),
             "clear()"
             R"(
@@ -528,6 +539,10 @@ public:
         def_readonly("num_epoch", &KnowledgeGraphSolver::num_epoch);
         def_readonly("episode_size", &KnowledgeGraphSolver::episode_size);
         def_readonly("batch_size", &KnowledgeGraphSolver::batch_size);
+        def_readonly("margin", &KnowledgeGraphSolver::margin);
+        def_readonly("l3_regularization", &KnowledgeGraphSolver::l3_regularization);
+        def_readonly("adversarial_temperature", &KnowledgeGraphSolver::adversarial_temperature);
+        def_readonly("positive_reuse", &KnowledgeGraphSolver::positive_reuse);
         def_readonly("log_frequency", &KnowledgeGraphSolver::log_frequency);
         def_readonly("num_worker", &KnowledgeGraphSolver::num_worker);
         def_readonly("num_sampler", &KnowledgeGraphSolver::num_sampler);
@@ -579,9 +594,19 @@ public:
                 l3_regularization (float, optional): L3 regularization (for DistMult, ComplEx & SimplE)
                 sample_batch_size (int, optional): batch size of samples in samplers
                 positive_reuse (int, optional): times of reusing positive samples
-                adversarial_temperature (float, optional): temperature of adversarial negative sampling,
+                adversarial_temperature (float, optional): temperature of self-adversarial negative sampling,
                     disabled when set to non-positive value
                 log_frequency (int, optional): log every log_frequency batches
+            )");
+
+        def("predict", &KnowledgeGraphSolver::predict_numpy, py::no_gil(),
+            py::arg("samples"),
+            "predict(samples)"
+            R"(
+            Predict logits for samples.
+
+            Parameters:
+                samples (ndarray): triplets with shape (?, 3), each triplet is ordered as (h, t, r)
             )");
 
         def("clear", &KnowledgeGraphSolver::clear, py::no_gil(),
@@ -634,6 +659,7 @@ public:
         def_readonly("num_epoch", &VisualizationSolver::num_epoch);
         def_readonly("episode_size", &VisualizationSolver::episode_size);
         def_readonly("batch_size", &VisualizationSolver::batch_size);
+        def_readonly("positive_reuse", &VisualizationSolver::positive_reuse);
         def_readonly("log_frequency", &VisualizationSolver::log_frequency);
         def_readonly("num_worker", &VisualizationSolver::num_worker);
         def_readonly("num_sampler", &VisualizationSolver::num_sampler);

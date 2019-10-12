@@ -1,5 +1,5 @@
 application:
-  knowledge_graph
+  knowledge graph
 
 resource:
   gpus: []
@@ -12,7 +12,7 @@ graph:
 build:
   optimizer:
     type: Adam
-    lr: 5.0e-4
+    lr: 2.0e-5
     weight_decay: 0
   num_partition: auto
   num_negative: 64

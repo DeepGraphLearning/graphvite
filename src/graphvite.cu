@@ -19,12 +19,11 @@
 #include "util/common.h"
 
 //#define USE_TIMER
-#define USE_LOSS
 //#define PINNED_MEMORY
 
 #include "bind.h"
 
-const std::string version = "0.1.0";
+const std::string version = "0.2.0";
 
 PYBIND11_MODULE(libgraphvite, module) {
     py::options options;
@@ -91,9 +90,17 @@ PYBIND11_MODULE(libgraphvite, module) {
     module.attr("ERROR") = google::ERROR;
     module.attr("FATAL") = google::FATAL;
 
+    // io
+    auto io = module.def_submodule("io");
+    io.def("size_string", graphvite::pretty::size_string, py::no_gil(), py::arg("size"));
+    io.def("yes_no", graphvite::pretty::yes_no, py::no_gil(), py::arg("x"));
+    io.def("block", graphvite::pretty::block, py::no_gil(), py::arg("content"));
+    io.def("header", graphvite::pretty::header, py::no_gil(), py::arg("content"));
+
     module.attr("auto") = graphvite::kAuto;
     module.def("KiB", graphvite::KiB, py::no_gil(), py::arg("size"));
     module.def("MiB", graphvite::MiB, py::no_gil(), py::arg("size"));
     module.def("GiB", graphvite::GiB, py::no_gil(), py::arg("size"));
+
     module.attr("__version__") = version;
 }

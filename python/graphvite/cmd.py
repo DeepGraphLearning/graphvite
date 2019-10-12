@@ -19,7 +19,9 @@ from __future__ import print_function, absolute_import
 
 import os
 import re
+import glob
 import yaml
+import shutil
 import logging
 import argparse
 from easydict import EasyDict
@@ -32,13 +34,13 @@ import graphvite.application as gap
 
 def get_config_path():
     candidate_paths = [
-        os.path.join(gv.package_path, "config"),
-        os.path.join(gv.package_path, "../../config")
+        os.path.realpath(os.path.join(gv.package_path, "config")),
+        os.path.realpath(os.path.join(gv.package_path, "../../config"))
     ]
     for config_path in candidate_paths:
         if os.path.isdir(config_path):
             return config_path
-    raise IOError("Can't find baseline configuration directory. Did you install GraphVite correctly?")
+    raise IOError("Can't find configuration directory. Did you install GraphVite correctly?")
 
 
 def get_parser():
@@ -46,11 +48,16 @@ def get_parser():
     command = parser.add_subparsers(metavar="command", dest="command")
     command.required = True
 
+    new = command.add_parser("new", help="create a new configuration file")
+    new.add_argument("application", help="name of the application (e.g. graph)", nargs="+")
+    new.add_argument("--file", help="yaml file to save")
+
     run = command.add_parser("run", help="run from configuration file")
     run.add_argument("config", help="yaml configuration file")
     run.add_argument("--no-eval", help="turn off evaluation", dest="eval", action="store_false")
     run.add_argument("--gpu", help="override the number of GPUs", type=int)
     run.add_argument("--cpu", help="override the number of CPUs per GPU", type=int)
+    run.add_argument("--epoch", help="override the number of epochs", type=int)
 
     visualize = command.add_parser("visualize", help="visualize high-dimensional vectors")
     visualize.add_argument("file", help="data file (numpy dump or txt)")
@@ -60,10 +67,12 @@ def get_parser():
     visualize.add_argument("--3d", help="3d plot", dest="dim", action="store_const", const=3, default=2)
 
     baseline = command.add_parser("baseline", help="reproduce baseline benchmarks")
-    baseline.add_argument("keywords", help="any keyword of the baseline (e.g. model, dataset)", metavar="keyword", nargs="+")
+    baseline.add_argument("keywords", help="any keyword of the baseline (e.g. model, dataset)", metavar="keyword",
+                          nargs="+")
     baseline.add_argument("--no-eval", help="turn off evaluation", dest="eval", action="store_false")
     baseline.add_argument("--gpu", help="overwrite the number of GPUs", type=int)
     baseline.add_argument("--cpu", help="overwrite the number of CPUs per GPU", type=int)
+    baseline.add_argument("--epoch", help="override the number of epochs", type=int)
 
     list = command.add_parser("list", help="list available baselines")
 
@@ -94,19 +103,57 @@ def load_config(config_file):
     return cfg
 
 
+def new_main(args):
+    config_path = get_config_path()
+    template_path = os.path.join(config_path, "template")
+    if not os.path.isdir(template_path):
+        raise IOError("Can't find template configuration directory. Did you install GraphVite correctly?")
+
+    config = "_".join(args.application) + ".yaml"
+    template = os.path.join(template_path, config)
+    if args.file:
+        config = args.file
+    if os.path.isfile(template):
+        if os.path.exists(config):
+            answer = None
+            while answer not in ["y", "n"]:
+                answer = input("File `%s` exists. Overwrite? (y/n)" % config)
+            if answer == "n":
+                return
+        shutil.copyfile(template, config)
+        print("A configuration template has been written into `%s`." % config)
+    else:
+        templates = glob.glob(os.path.join(template_path, "*.yaml"))
+        templates = sorted(templates)
+        applications = [""]
+        for template in templates:
+            application = os.path.splitext(os.path.basename(template))[0]
+            application = application.replace("_", " ")
+            applications.append(application)
+        raise ValueError("Can't find a configuration template for `%s`. Available applications are %s"
+                         % (" ".join(args.application), "\n    ".join(applications)))
+
+
 def run_main(args):
     cfg = load_config(args.config)
-    if args.gpu:
+    if args.gpu is not None:
         cfg.resource.gpus = range(args.gpu)
-    if args.cpu:
+    if args.cpu is not None:
         cfg.resource.cpu_per_gpu = args.cpu
+    if args.epoch is not None:
+        cfg.train.num_epoch = args.epoch
 
     app = gap.Application(cfg.application, **cfg.resource)
+    if "format" in cfg:
+        app.set_format(**cfg.format)
     app.load(**cfg.graph)
     app.build(**cfg.build)
     app.train(**cfg.train)
     if args.eval and "evaluate" in cfg:
-        app.evaluate(**cfg.evaluate)
+        if isinstance(cfg.evaluate, dict):
+            cfg.evaluate = [cfg.evaluate]
+        for evaluation in cfg.evaluate:
+            app.evaluate(**evaluation)
     if "save" in cfg:
         app.save(**cfg.save)
 
@@ -129,7 +176,8 @@ def visualize_main(args):
     else:
         labels = None
 
-    gv.init_logging(logging.WARNING)
+    gv.init_logging(logging.INFO)
+    # gv.init_logging(logging.WARNING)
 
     app = gap.VisualizationApplication(args.dim, [0])
     app.load(vectors=vectors, perplexity=args.perplexity)
@@ -147,7 +195,7 @@ def baseline_main(args):
             file = os.path.join(path, file)
             match = True
             for keyword in args.keywords:
-                result = re.search("[/\_.]%s[/\_.]" % keyword, file)
+                result = re.search(r"[/\\_.]%s[/\\_.]" % keyword, file)
                 if not result:
                     match = False
                     break
@@ -163,17 +211,22 @@ def baseline_main(args):
     config = configs[0]
     print("running baseline: %s" % os.path.relpath(config, config_path))
     cfg = load_config(config)
-    if args.gpu:
+    if args.gpu is not None:
         cfg.resource.gpus = range(args.gpu)
-    if args.cpu:
+    if args.cpu is not None:
         cfg.resource.cpu_per_gpu = args.cpu
+    if args.epoch is not None:
+        cfg.train.num_epoch = args.epoch
 
     app = gap.Application(cfg.application, **cfg.resource)
     app.load(**cfg.graph)
     app.build(**cfg.build)
     app.train(**cfg.train)
     if args.eval and "evaluate" in cfg:
-        app.evaluate(**cfg.evaluate)
+        if isinstance(cfg.evaluate, dict):
+            cfg.evaluate = [cfg.evaluate]
+        for evaluation in cfg.evaluate:
+            app.evaluate(**evaluation)
     if "save" in cfg:
         app.save(**cfg.save)
 
@@ -187,6 +240,8 @@ def list_main(args):
     count = 0
     for path, dirs, files in os.walk(config_path):
         path = os.path.relpath(path, config_path)
+        if path == "template":
+            continue
         depth = path.count("/")
         if path != ".":
             depth += 1
@@ -199,6 +254,7 @@ def list_main(args):
 
 
 command = {
+    "new": new_main,
     "run": run_main,
     "visualize": visualize_main,
     "baseline": baseline_main,

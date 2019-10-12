@@ -6,6 +6,10 @@ resource:
   cpu_per_gpu: 8
   dim: 128
 
+format:
+  delimiters: " \t\r\n"
+  comment: "#"
+
 graph:
   file_name: <blogcatalog.train>
   as_undirected: true
@@ -30,10 +34,13 @@ train:
   log_frequency: 1000
 
 evaluate:
-  task: node classification
-  file_name: <blogcatalog.label>
-  portions: [0.2]
-  times: 1
+  - task: link prediction
+    file_name: <blogcatalog.test>
+    filter_file: <blogcatalog.train>
+  - task: node classification
+    file_name: <blogcatalog.label>
+    portions: [0.2]
+    times: 1
 
 save:
   file_name: line_blogcatalog.pkl

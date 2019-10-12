@@ -7,7 +7,7 @@ resource:
   dim: 96
 
 graph:
-  file_name: <friendster.train>
+  file_name: <friendster.graph>
   as_undirected: true
 
 build:

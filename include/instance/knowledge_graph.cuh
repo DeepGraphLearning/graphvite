@@ -22,6 +22,7 @@
 
 #include "core/graph.h"
 #include "core/solver.h"
+#include "model/knowledge_graph.h"
 #include "gpu/knowledge_graph.cuh"
 
 /**
@@ -80,6 +81,7 @@ public:
     /** Clear the graph and free CPU memory */
     void clear() override {
         Base::clear();
+        num_relation = 0;
         decltype(entity2id)().swap(entity2id);
         decltype(relation2id)().swap(relation2id);
         decltype(id2entity)().swap(id2entity);
@@ -293,10 +295,10 @@ public:
     }
 
     /**
-     * Call the corresponding GPU kernel
+     * Call the corresponding GPU kernel for training
      * (TransE, DistMult, ComplEx, SimplE, RotatE) * (SGD, Momentum, AdaGrad, RMSprop, Adam)
      */
-    bool kernel_dispatch() override {
+    bool train_dispatch() override {
         using namespace gpu;
         KnowledgeGraphSolver *solver = reinterpret_cast<KnowledgeGraphSolver *>(this->solver);
 
@@ -307,130 +309,151 @@ public:
             margin_or_l3 = solver->l3_regularization;
         switch (num_moment) {
             case 0: {
-                decltype(&transe::train<Vector, Index, kSGD>) train = nullptr;
+                decltype(&knowledge_graph::train<Vector, Index, TransE, kSGD>) train = nullptr;
                 if (solver->model == "TransE") {
                     if (optimizer.type == "SGD")
-                        train = &transe::train<Vector, Index, kSGD>;
+                        train = &knowledge_graph::train<Vector, Index, TransE, kSGD>;
                 }
                 if (solver->model == "DistMult") {
                     if (optimizer.type == "SGD")
-                        train = &distmult::train<Vector, Index, kSGD>;
+                        train = &knowledge_graph::train<Vector, Index, DistMult, kSGD>;
                 }
                 if (solver->model == "ComplEx") {
                     if (optimizer.type == "SGD")
-                        train = &complex::train<Vector, Index, kSGD>;
+                        train = &knowledge_graph::train<Vector, Index, ComplEx, kSGD>;
                 }
                 if (solver->model == "SimplE") {
                     if (optimizer.type == "SGD")
-                        train = &simple::train<Vector, Index, kSGD>;
+                        train = &knowledge_graph::train<Vector, Index, SimplE, kSGD>;
                 }
                 if (solver->model == "RotatE") {
                     if (optimizer.type == "SGD")
-                        train = &rotate::train<Vector, Index, kSGD>;
+                        train = &knowledge_graph::train<Vector, Index, RotatE, kSGD>;
                 }
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
-                            (*embeddings[0], *embeddings[1], *embeddings[2], *gradients[2],
-                                    batch, negative_batch, optimizer, margin_or_l3, solver->adversarial_temperature
-#ifdef USE_LOSS
-                            , this->loss
-#endif
-                    );
+                            (*embeddings[0], *embeddings[1], *embeddings[2],
+                                    batch, negative_batch, loss,
+                                    optimizer, margin_or_l3, solver->adversarial_temperature
+                            );
                     return true;
                 }
                 break;
             }
             case 1: {
-                decltype(&transe::train_1_moment<Vector, Index, kMomentum>) train = nullptr;
+                decltype(&knowledge_graph::train_1_moment<Vector, Index, TransE, kMomentum>) train = nullptr;
                 if (solver->model == "TransE") {
                     if (optimizer.type == "Momentum")
-                        train = &transe::train_1_moment<Vector, Index, kMomentum>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, TransE, kMomentum>;
                     if (optimizer.type == "AdaGrad")
-                        train = &transe::train_1_moment<Vector, Index, kAdaGrad>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, TransE, kAdaGrad>;
                     if (optimizer.type == "RMSprop")
-                        train = &transe::train_1_moment<Vector, Index, kRMSprop>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, TransE, kRMSprop>;
                 }
                 if (solver->model == "DistMult") {
                     if (optimizer.type == "Momentum")
-                        train = &distmult::train_1_moment<Vector, Index, kMomentum>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, DistMult, kMomentum>;
                     if (optimizer.type == "AdaGrad")
-                        train = &distmult::train_1_moment<Vector, Index, kAdaGrad>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, DistMult, kAdaGrad>;
                     if (optimizer.type == "RMSprop")
-                        train = &distmult::train_1_moment<Vector, Index, kRMSprop>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, DistMult, kRMSprop>;
                 }
                 if (solver->model == "ComplEx") {
                     if (optimizer.type == "Momentum")
-                        train = &complex::train_1_moment<Vector, Index, kMomentum>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, ComplEx, kMomentum>;
                     if (optimizer.type == "AdaGrad")
-                        train = &complex::train_1_moment<Vector, Index, kAdaGrad>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, ComplEx, kAdaGrad>;
                     if (optimizer.type == "RMSprop")
-                        train = &complex::train_1_moment<Vector, Index, kRMSprop>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, ComplEx, kRMSprop>;
                 }
                 if (solver->model == "SimplE") {
                     if (optimizer.type == "Momentum")
-                        train = &simple::train_1_moment<Vector, Index, kMomentum>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, SimplE, kMomentum>;
                     if (optimizer.type == "AdaGrad")
-                        train = &simple::train_1_moment<Vector, Index, kAdaGrad>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, SimplE, kAdaGrad>;
                     if (optimizer.type == "RMSprop")
-                        train = &simple::train_1_moment<Vector, Index, kRMSprop>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, SimplE, kRMSprop>;
                 }
                 if (solver->model == "RotatE") {
                     if (optimizer.type == "Momentum")
-                        train = &rotate::train_1_moment<Vector, Index, kMomentum>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, RotatE, kMomentum>;
                     if (optimizer.type == "AdaGrad")
-                        train = &rotate::train_1_moment<Vector, Index, kAdaGrad>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, RotatE, kAdaGrad>;
                     if (optimizer.type == "RMSprop")
-                        train = &rotate::train_1_moment<Vector, Index, kRMSprop>;
+                        train = &knowledge_graph::train_1_moment<Vector, Index, RotatE, kRMSprop>;
                 }
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
-                            (*embeddings[0], *embeddings[1], *embeddings[2], *gradients[2],
+                            (*embeddings[0], *embeddings[1], *embeddings[2],
                                     (*moments[0])[0], (*moments[1])[0], (*moments[2])[0],
-                                    batch, negative_batch, optimizer, margin_or_l3, solver->adversarial_temperature
-#ifdef USE_LOSS
-                            , this->loss
-#endif
-                    );
+                                    batch, negative_batch, loss,
+                                    optimizer, margin_or_l3, solver->adversarial_temperature
+                            );
                     return true;
                 }
                 break;
             }
             case 2: {
-                decltype(&transe::train_2_moment<Vector, Index, kAdam>) train = nullptr;
+                decltype(&knowledge_graph::train_2_moment<Vector, Index, TransE, kAdam>) train = nullptr;
                 if (solver->model == "TransE") {
                     if (optimizer.type == "Adam")
-                        train = &transe::train_2_moment<Vector, Index, kAdam>;
+                        train = &knowledge_graph::train_2_moment<Vector, Index, TransE, kAdam>;
                 }
                 if (solver->model == "DistMult") {
                     if (optimizer.type == "Adam")
-                        train = &distmult::train_2_moment<Vector, Index, kAdam>;
+                        train = &knowledge_graph::train_2_moment<Vector, Index, DistMult, kAdam>;
                 }
                 if (solver->model == "ComplEx") {
                     if (optimizer.type == "Adam")
-                        train = &complex::train_2_moment<Vector, Index, kAdam>;
+                        train = &knowledge_graph::train_2_moment<Vector, Index, ComplEx, kAdam>;
                 }
                 if (solver->model == "SimplE") {
                     if (optimizer.type == "Adam")
-                        train = &simple::train_2_moment<Vector, Index, kAdam>;
+                        train = &knowledge_graph::train_2_moment<Vector, Index, SimplE, kAdam>;
                 }
                 if (solver->model == "RotatE") {
                     if (optimizer.type == "Adam")
-                        train = &rotate::train_2_moment<Vector, Index, kAdam>;
+                        train = &knowledge_graph::train_2_moment<Vector, Index, RotatE, kAdam>;
                 }
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
-                            (*embeddings[0], *embeddings[1], *embeddings[2], *gradients[2],
+                            (*embeddings[0], *embeddings[1], *embeddings[2],
                                     (*moments[0])[0], (*moments[1])[0], (*moments[2])[0],
                                     (*moments[0])[1], (*moments[1])[1], (*moments[2])[1],
-                                    batch, negative_batch, optimizer, margin_or_l3, solver->adversarial_temperature
-#ifdef USE_LOSS
-                            , this->loss
-#endif
-                    );
+                                    batch, negative_batch, loss,
+                                    optimizer, margin_or_l3, solver->adversarial_temperature
+                            );
                     return true;
                 }
                 break;
             }
+        }
+        return false;
+    }
+
+    /**
+     * Call the corresponding GPU kernel for prediction
+     * (TransE, DistMult, ComplEx, SimplE, RotatE)
+     */
+    bool predict_dispatch() override {
+        using namespace gpu;
+        KnowledgeGraphSolver *solver = reinterpret_cast<KnowledgeGraphSolver *>(this->solver);
+
+        decltype(&knowledge_graph::predict<Vector, Index, TransE>) predict = nullptr;
+        if (solver->model == "TransE")
+            predict = &knowledge_graph::predict<Vector, Index, TransE>;
+        if (solver->model == "DistMult")
+            predict = &knowledge_graph::predict<Vector, Index, DistMult>;
+        if (solver->model == "ComplEx")
+            predict = &knowledge_graph::predict<Vector, Index, ComplEx>;
+        if (solver->model == "SimplE")
+            predict = &knowledge_graph::predict<Vector, Index, SimplE>;
+        if (solver->model == "RotatE")
+            predict = &knowledge_graph::predict<Vector, Index, RotatE>;
+        if (predict) {
+            predict<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
+                    (*embeddings[0], *embeddings[1], *embeddings[2], batch, logits, solver->margin);
+            return true;
         }
         return false;
     }
@@ -488,7 +511,7 @@ public:
 
     /** Return the default optimizer type and its hyperparameters */
     inline Optimizer get_default_optimizer() const override {
-        return Adam(1e-4, 0);
+        return Adam(5e-5, 0);
     }
 
     /** Build alias reference for embeddings */
@@ -568,11 +591,11 @@ public:
      * @param _l3_regularization l3 regularization (for DistMult, ComplEx & SimplE)
      * @param _sample_batch_size batch size of samples in samplers
      * @param _positive_reuse times of reusing positive samples
-     * @param _adversarial_temperature temperature of adversarial negative sampling,
+     * @param _adversarial_temperature temperature of self-adversarial negative sampling,
      *     disabled when set to non-positive value
      * @param _log_frequency log every log_frequency batches
      */
-    void train(const std::string &_model = "RotatE", int _num_epoch = 2000, bool _resume = false, float _margin = 24,
+    void train(const std::string &_model = "RotatE", int _num_epoch = 2000, bool _resume = false, float _margin = 12,
                float _l3_regularization = 2e-3, int _sample_batch_size = 2000, int _positive_reuse = 1,
                float _adversarial_temperature = 2, int _log_frequency = 100) {
         margin = _margin;

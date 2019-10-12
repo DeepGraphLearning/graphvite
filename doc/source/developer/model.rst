@@ -1,90 +1,97 @@
 Customize Models
 ================
 
-One common demand for graph embedding is to customize the model (i.e. loss function).
-Here we will show you an example of adding a new loss function to the knowledge graph
+One common demand for graph embedding is to customize the model (i.e. score function).
+Here we will demonstrate an example of adding a new model to the knowledge graph
 solver.
 
-Before start, it would be better if you know some basics about `the index and threads`_
-in CUDA. In GraphVite, the threads are arranged in a group of 32 (`warp`_). Threads in
-a group works simultaneously on an edge sample, where each thread is responsible for
-computation in some dimensions, according to the modulus of the dimension.
-
-.. _the index and threads: https://en.wikipedia.org/wiki/Thread_block_(CUDA_programming)#Indexing
-.. _warp: https://en.wikipedia.org/wiki/Thread_block_(CUDA_programming)#Warps
-
-First, get into ``include/gpu/knowledge_graph.h``. Fork an existing loss function
-(e.g. transe) and change it to your own name.
-
-You will find 3 implementations of the loss function in the namespace.
+First, get into ``include/model/knowledge_graph.h``. Fork an existing model class
+(e.g. TransE) and change it to a new name.
 
 .. code-block:: c++
 
-    namespace transe {
-    __global__ void train(...);
-    __global__ void train_1_moment(...);
-    __global__ void train_2_moment(...);
+    template<class _Vector>
+    class TransE {
+        __host__ __device__ static void forward(...);
+
+        template <OptimizerType optimizer_type>
+        __host__ __device__ static void backward(...);
+
+        template <OptimizerType optimizer_type>
+        __host__ __device__ static void backward(...);
+
+        template <OptimizerType optimizer_type>
+        __host__ __device__ static void backward(...);
     }
 
-The three implementations correspond to 3 categories of optimizers. We are going to
-modify one, and then do some copy-and-paste work to the others.
+Here a model class contains a forward function and several overloads of the backward
+function, which correspond to different categories of optimizers. We are going to
+modify a forward and a backward function, and then do some copy-and-paste work to the
+others.
 
-Let's start from ``train_2_moment()``. Find the following two loops.
-You can locate them by searching ``i = lane_id``.
+Let's start from the forward function. This function takes a triplet of embedding
+vectors, and outputs a score.
 
 .. code-block:: c++
 
-    for (int i = lane_id; i < dim; i += kWarpSize) {
-        x += ...;
-    }
+    void forward(const Vector &head, const Vector &tail, const Vector &relation,
+                 Float &output, float margin)
 
-    for (int i = lane_id; i < dim; i += kWarpSize) {
-        head[i] -= (optimizer.*update)(head[i], ..., head_moment1[i], head_moment2[i], weight);
-        tail[i] -= (optimizer.*update)(tail[i], ..., tail_moment1[i], tail_moment2[i], weight);
-        Float relation_update = (optimizer.*update)(relation[i], ...,
-                                                    relation_moment1[i], relation_moment2[i], weight);
-        relation[i] -= relation_update;
-        relation_gradient[i] += relation_update;
-    }
-
-The first loop is the forward propagtion, which computes the score for each dimension.
-The second loop is the backward propagation, which computes the gradient for each
-dimension.
-
-What you need to do is to replace the ellipsis with your own formulas.
-Note the head gradient is already stored in ``gradient``, which you need to refer
-in your back propagation.
-
-If you want to change the loss function over the logit
-(e.g. change from margin loss to standard log-likelihood), you need also change
-the code between these two loops, as the following fragment shows.
+The last argument is either margin for latent distance model or l3 regularization
+for tensor decomposition models. For TransE, the function is implemented as
 
 .. code-block:: c++
 
-    x = WarpBroadcast(WarpReduce(x), 0);
-    Float prob = ...;
-    if (label) {
-        gradient = ...;
-        weight = ...;
-    #ifdef USE_LOSS
-        sample_loss += ...;
-    #endif
-    } else {
-        gradient = ...;
-        weight = ...;
-    #ifdef USE_LOSS
-        sample_loss += ...;
-    #endif
+    output = 0;
+    FOR(i, dim)
+        output += abs(head[i] + relation[i] - tail[i]);
+    output = margin - SUM(output);
+
+Here we need to replace this piece of code with our own formulas. Note that this
+function should be compatible with both CPU and GPU. This can be easily achieved by
+helper macros defined in GraphVite.
+
+We just need to use the macro ``FOR(i, stop)`` instead of the conventional
+``for (int i = 0; i < stop; i++)``. For any accumulator ``x`` inside the loop (e.g.
+``output`` in this case), update it with ``x = SUM(x)`` after the loop to get the
+correct value.
+
+For the backward function. It takes additional arguments of moment statistics, head
+gradient, optimizer and sample weight. For example, here is an overload with 1 moment
+per embedding.
+
+.. code-block:: c++
+
+    template<OptimizerType optimizer_type>
+    void backward(Vector &head, Vector &tail, Vector &relation,
+                  Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
+                  float margin, Float gradient, const Optimizer &optimizer, Float weight)
+
+The backward function should compute the gradient for each embedding, and update them
+with the optimizer. Typically, this is implemented as
+
+.. code-block:: c++
+
+    auto update = get_update_function_1_moment<Float, optimizer_type>();
+    FOR(i, dim) {
+        Float h = head[i];
+        Float t = tail[i];
+        Float r = relation[i];
+        Float s = h + r - t > 0 ? 1 : -1;
+        head[i] -= (optimizer.*update)(h, -gradient * s, head_moment1[i], weight);
+        tail[i] -= (optimizer.*update)(t, gradient * s, tail_moment1[i], weight);
+        relation[i] -= (optimizer.*update)(r, -gradient * s, relation_moment1[i], weight);
     }
 
-Now you are almost there. Copy the modified fragment to ``train()`` and
-``train_1_moment()``, and delete undeclared variables like ``head_moment2``.
-Now your model supports all optimizers.
+Here we modify this function according to the partial derivatives of our forward
+function. Once we complete a backward function, we can copy them to the other
+overloads. The only difference among overloads is that they use different update
+function and numbers of moment statistics.
 
-Finally, you have to let the solver know there is a new model. In
+Finally, we have to let the solver know there is a new model. In
 ``instance/knowledge_graph.cuh``, add the name of your model in
-``get_available_models()``. Also add run-time dispatch for optimizers in
-``kernel_dispatch()``.
+``get_available_models()``. Also add run-time dispatch of the new model in
+``train_dispatch()`` and ``predict_dispatch()``.
 
 .. code-block:: c++
 

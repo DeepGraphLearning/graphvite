@@ -37,7 +37,7 @@ public:
     typedef _Index Index;
 
     int device_id;
-    Index count = 0;
+    Index count = 0, capacity = 0;
     cudaStream_t stream;
     int *refer_count = nullptr;
     Data *host_ptr = nullptr, *device_ptr = nullptr;
@@ -55,20 +55,21 @@ public:
 
     /** Shallow copy constructor */
     Memory(const Memory &m) :
-            device_id(m.device_id), count(m.count), stream(m.stream), refer_count(m.refer_count),
+            device_id(m.device_id), count(m.count), capacity(m.capacity), stream(m.stream), refer_count(m.refer_count),
             host_ptr(m.host_ptr), device_ptr(m.device_ptr) {
-        if (count)
+        if (capacity)
             (*refer_count)++;
     }
 
     Memory &operator=(const Memory &) = delete;
 
-    ~Memory() { resize(0); }
+    ~Memory() { reallocate(0); }
 
     /** Swap two memory spaces */
     void swap(Memory &m) {
         std::swap(device_id, m.device_id);
         std::swap(count, m.count);
+        std::swap(capacity, m.capacity);
         std::swap(stream, m.stream);
         std::swap(refer_count, m.refer_count);
         std::swap(host_ptr, m.host_ptr);
@@ -91,11 +92,21 @@ public:
 #endif
     }
 
-    /** Resize the memory space */
-    void resize(Index _count) {
-        if (count == _count)
-            return;
-        if (count && !--(*refer_count)) {
+    /** Copy data from another memory */
+    void copy(const Memory &m) {
+        resize(m.count);
+        memcpy(host_ptr, m.host_ptr, count * sizeof(Data));
+    }
+
+    /** Copy data from a pointer */
+    void copy(void *ptr, Index _count) {
+        resize(_count);
+        memcpy(host_ptr, ptr, count * sizeof(Data));
+    }
+
+    /** Reallocate the memory space */
+    void reallocate(Index _capacity) {
+        if (capacity && !--(*refer_count)) {
             delete refer_count;
 #ifdef PINNED_MEMORY
             CUDA_CHECK(cudaFreeHost(host_ptr));
@@ -107,19 +118,26 @@ public:
                 CUDA_CHECK(cudaFree(device_ptr));
             }
         }
-        count = _count;
-        if (count) {
+        capacity = _capacity;
+        if (capacity) {
             refer_count = new int(1);
 #ifdef PINNED_MEMORY
-            CUDA_CHECK(cudaMallocHost(&host_ptr, count * sizeof(Data)));
+            CUDA_CHECK(cudaMallocHost(&host_ptr, capacity * sizeof(Data)));
 #else
-            host_ptr = new Data[count];
+            host_ptr = new Data[capacity];
 #endif
             if (device_id != -1) {
                 CUDA_CHECK(cudaSetDevice(device_id));
-                CUDA_CHECK(cudaMalloc(&device_ptr, count * sizeof(Data)));
+                CUDA_CHECK(cudaMalloc(&device_ptr, capacity * sizeof(Data)));
             }
         }
+    }
+
+    /** Resize the memory space. Reallocate only if the capacity is not enough. */
+    void resize(Index _count) {
+        if (_count > capacity || (capacity && *refer_count > 1))
+            reallocate(_count);
+        count = _count;
     }
 
     /** Copy the memory space to GPU */
@@ -164,9 +182,10 @@ public:
         }
     }
 
-    /** Fill the memory space with data. Automatically resize the memory swhen necessary. */
-    void fill(const Data &data, Index _count) {
-        resize(_count);
+    /** Fill the memory space with data. Automatically resize the memory when necessary. */
+    void fill(const Data &data, Index _count = 0) {
+        if (_count)
+            resize(_count);
         for (Index i = 0; i < count; i++)
             host_ptr[i] = data;
     }
@@ -222,11 +241,11 @@ public:
     }
 
     /**
-     * @param count number of data
+     * @param capacity number of data
      * @return GPU memory cost
      */
-    static size_t gpu_memory_demand(int count) {
-        return count * sizeof(Data);
+    static size_t gpu_memory_demand(int capacity) {
+        return capacity * sizeof(Data);
     }
 };
 

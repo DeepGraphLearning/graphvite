@@ -1,0 +1,129 @@
+###########################################################
+# High-dimensional data visualization configuration file
+###########################################################
+
+application:
+  visualization
+
+resource:
+  # List of GPU ids. Multiple GPUs will cause unstable results.
+  gpus: [0]
+  # Memory limit for each GPU in bytes. Default is all available memory.
+  gpu_memory_limit: auto
+  # Number of CPU thread per GPU. Default is all CPUs.
+  cpu_per_gpu: auto
+  # Dimension of the embeddings.
+  dim: 2
+
+format:
+  # String of delimiter characters. Change it if your node name contains blank character.
+  delimiters: " \t\r\n"
+  # Prefix of comment strings. Change it if you use comment style other than Python.
+  comment: "#"
+
+graph:
+  # Path to vector file. Each line should be one of the following
+  # [value] [delimiter] [value] [delimiter]... [comment]...
+  # [comment]...
+  # For standard datasets, you can specify them by <[dataset].[split]>.
+  vector_file:
+  # Number of neighbors for each node. Default is usually reasonable.
+  num_neighbor: 200
+  # Perplexity for the neighborhood of each node.
+  # Typical values are between 5 and 50. Need to be tuned for best results.
+  # Larger value focuses on global difference and results in larger clusters.
+  perplexity: 30
+  # Normalize the input vectors or not. True is recommended.
+  vector_normalization: true
+
+build:
+  optimizer:
+    # Optimizer.
+    type: Adam
+    # Learning rate. Default is usually reasonable.
+    lr: 0.5
+    # Weight decay. Default is usually reasonable.
+    weight_decay: 1.0e-5
+    # Learning rate schedule, can be "linear" or "constant". Linear is recommended.
+    schedule: linear
+  # Number of partitions. Auto is recommended.
+  num_partition: auto
+  # Number of negative samples per positive sample.
+  # Larger value results in slower training.
+  # The performance may be influenced by num_negative * negative_weight.
+  num_negative: 5
+  # Batch size of samples in CPU-GPU transfer. Default is recommended.
+  batch_size: 100000
+  # Number of batches in a partition block.
+  # Default is recommended.
+  episode_size: auto
+
+train:
+  # Model, can be LargeVis.
+  model: LargeVis
+  # Number of epochs. Default is recommended.
+  num_epoch: 50
+  # Weight of negative samples. Values larger than 10 may cause unstable training.
+  negative_weight: 3
+  # Exponent of degrees in negative sampling. Default is recommended.
+  negative_sample_exponent: 0.75
+  # Batch size of samples in samplers. Default is recommended.
+  sample_batch_size: 2000
+  # Log every n batches.
+  log_frequency: 1000
+
+# Comment out this section if not needed.
+evaluate:
+  # Comment out any task if not needed.
+  - task: visualization
+    # Path to label file. Each line should be one of the following
+    # [label] [comment]...
+    # [comment]...
+    # The file is assumed to have the same order as input vectors.
+    file_name:
+    # Path to save file, can be either "*.png" or "*.pdf".
+    # If not provided, show the figure in window.
+    save_file:
+    # Size of the figure.
+    figure_size: 10
+    # Size of points. Recommend to use figure_size / 5.
+    scale: 2
+
+  # This task only works for dim = 3.
+  - task: animation
+    # Path to label file. Each line should be one of the following
+    # [label] [comment]...
+    # [comment]...
+    file_name:
+    # Path to save file, can be "*.gif".
+    save_file:
+    # Size of the figure.
+    figure_size: 5
+    # Size of points. Recommend to use figure_size / 5.
+    scale: 1
+    # Elevation angle. Default is recommended.
+    elevation: 30
+    # Number of frames. Default is recommended.
+    num_frame: 700
+
+  - task: hierarchy
+    # Path to hierarchical label file. Each line should be one of the following
+    # [label] [delimiter] [label] [delimiter]... [comment]...
+    # [comment]...
+    # Labels should be ordered in ascending depth, i.e. the first label corresponds to the root in the hierarchy.
+    # The file is assumed to have the same order as input vectors.
+    file_name:
+    # Target class to be visualized.
+    target:
+    # Path to save file, can be "*.gif".
+    save_file:
+    # Size of the figure.
+    figure_size: 10
+    # Size of points. Recommend to use figure_size / 5.
+    scale: 2
+    # Duration of each frame in seconds. Default is recommended.
+    duration: 3
+  
+# Comment out this section if not needed.
+save:
+  file_name: visualization.pkl

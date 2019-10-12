@@ -1,5 +1,5 @@
 if (WIN32)
-    add_library(graphvite graphvite.cc)
+    add_library(graphvite graphvite.cu)
 else ()
     add_library(graphvite SHARED graphvite.cu)
     set_target_properties(graphvite PROPERTIES

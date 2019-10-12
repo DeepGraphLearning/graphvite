@@ -19,13 +19,13 @@
 #pragma once
 
 #include "io.h"
+#include "math.h"
 
 namespace graphvite {
 
 #define DEPRECATED(reason) __attribute__ ((deprecated(reason)))
 
 const float kEpsilon = 1e-15;
-const float kLogitClip = 80;
 const int kAuto = 0;
 const size_t kMaxLineLength = 1 << 22;
 

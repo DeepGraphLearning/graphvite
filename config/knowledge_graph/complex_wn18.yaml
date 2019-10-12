@@ -1,5 +1,5 @@
 application:
-  knowledge_graph
+  knowledge graph
 
 resource:
   gpus: []
@@ -12,7 +12,7 @@ graph:
 build:
   optimizer:
     type: Adam
-    lr: 5.0e-5
+    lr: 1.0e-5
     weight_decay: 0
   num_partition: auto
   num_negative: 64
@@ -22,7 +22,7 @@ build:
 train:
   model: ComplEx
   num_epoch: 4000
-  l3_regularization: 1.0e-3
+  l3_regularization: 5.0e-5
   sample_batch_size: 2000
   adversarial_temperature: 2
   log_frequency: 100

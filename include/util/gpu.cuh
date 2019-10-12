@@ -19,14 +19,31 @@
 #pragma once
 
 namespace graphvite {
-namespace gpu{
+
+// helper macros for CPU-GPU agnostic code
+#if __CUDA_ARCH__
+
+#define FOR(i, stop) \
+    const int lane_id = threadIdx.x % gpu::kWarpSize; \
+    for (int i = lane_id; i < (stop); i += gpu::kWarpSize)
+#define SUM(x) gpu::WarpBroadcast(gpu::WarpReduce(x), 0)
+
+#else
+
+#define FOR(i, stop) \
+    for (int i = 0; i < stop; i++)
+#define SUM(x) (x)
+
+#endif
+
+namespace gpu {
 
 const int kBlockPerGrid = 8192;
 const int kThreadPerBlock = 512;
 const int kWarpSize = 32;
 const unsigned kFullMask = 0xFFFFFFFF;
 
-template <class T>
+template<class T>
 __device__ T WarpReduce(T value) {
 #pragma unroll
     for (int delta = 1; delta < kWarpSize; delta *= 2)
@@ -38,7 +55,7 @@ __device__ T WarpReduce(T value) {
     return value;
 }
 
-template <class T>
+template<class T>
 __device__ T WarpBroadcast(T value, int lane_id) {
 #if __CUDACC_VER_MAJOR__ >= 9
     return __shfl_sync(kFullMask, value, lane_id);

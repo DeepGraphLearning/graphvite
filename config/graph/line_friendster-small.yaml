@@ -7,7 +7,7 @@ resource:
   dim: 128
 
 graph:
-  file_name: <friendster.small_train>
+  file_name: <friendster.small_graph>
   as_undirected: true
 
 build:

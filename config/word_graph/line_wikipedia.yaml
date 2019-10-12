@@ -1,5 +1,5 @@
 application:
-  word_graph
+  word graph
 
 resource:
   gpus: []
@@ -7,7 +7,7 @@ resource:
   dim: 128
 
 graph:
-  file_name: <wikipedia.train>
+  file_name: <wikipedia.graph>
   window: 5
   min_count: 5
 

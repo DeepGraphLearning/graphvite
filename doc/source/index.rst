@@ -22,6 +22,7 @@ GraphVite - graph embedding at high speed and large scale
 
    user/command_line
    user/configuration
+   user/format
    user/python
    user/auto
 
@@ -31,6 +32,7 @@ GraphVite - graph embedding at high speed and large scale
 
    developer/framework
    developer/model
+   developer/routine
    developer/solver
 
 .. toctree::

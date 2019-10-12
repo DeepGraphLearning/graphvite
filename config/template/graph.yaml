@@ -1,0 +1,105 @@
+###########################################################
+# Node embedding configuration file
+###########################################################
+
+application:
+  graph
+
+resource:
+  # List of GPU ids. Default is all GPUs
+  gpus: []
+  # Memory limit for each GPU in bytes. Default is all available memory.
+  gpu_memory_limit: auto
+  # Number of CPU thread per GPU. Default is all CPUs.
+  cpu_per_gpu: auto
+  # Dimension of the embeddings.
+  dim: 128
+
+format:
+  # String of delimiter characters. Change it if your node name contains blank character.
+  delimiters: " \t\r\n"
+  # Prefix of comment strings. Change it if you use comment style other than Python.
+  comment: "#"
+
+graph:
+  # Path to edge list file. Each line should be one of the following
+  # [node 1] [delimiter] [node 2] [comment]...
+  # [node 1] [delimiter] [node 2] [delimiter] [weight] [comment]...
+  # [comment]...
+  # For standard datasets, you can specify them by <[dataset].[split]>.
+  file_name:
+  # Symmetrize the graph or not. True is recommended.
+  as_undirected: true
+  # Normalize the adjacency matrix or not. This may influence the performance a little.
+  normalization: false
+
+build:
+  optimizer:
+    # Optimizer.
+    type: SGD
+    # Learning rate. Default is usually reasonable.
+    lr: 0.025
+    # Weight decay.
+    weight_decay: 0.005
+    # Learning rate schedule, can be "linear" or "constant". Linear is recommended.
+    schedule: linear
+  # Number of partitions. Auto is recommended.
+  num_partition: auto
+  # Number of negative samples per positive sample.
+  # Larger value results in slower training.
+  # The performance may be influenced by num_negative * negative_weight.
+  num_negative: 1
+  # Batch size of samples in CPU-GPU transfer. Default is recommended.
+  batch_size: 100000
+  # Number of batches in a partition block.
+  # Default is recommended.
+  episode_size: auto
+
+train:
+  # Model, can be DeepWalk, LINE or node2vec.
+  model: DeepWalk
+  # Number of epochs. Default is usually reasonable for sparse graphs.
+  # For dense graphs (|E| / |V| > 100), you may use smaller values.
+  num_epoch: 2000
+  # Weight of negative samples. Values larger than 10 may cause unstable training.
+  negative_weight: 5
+  # Exponent of degrees in negative sampling. Default is recommended.
+  negative_sample_exponent: 0.75
+  # Augmentation step. Need to be tuned on the validation set.
+  # Larger value is needed for sparser graphs.
+  augmentation_step: 5
+  # Return parameter and in-out parameters (node2vec). Need to be tuned on the validation set.
+  p: 1
+  q: 1
+  # Length of each random walk. Default is recommended.
+  random_walk_length: 40
+  # Batch size of random walks in samplers. Default is recommended.
+  random_walk_batch_size: 100
+  # Log every n batches.
+  log_frequency: 1000
+
+# Comment out this section if not needed.
+evaluate:
+  # Comment out any task if not needed.
+  - task: node classification
+    # Path to node label file. Each line should be one of the following
+    # [node] [delimiter] [label] [comment]...
+    # [comment]...
+    file_name:
+    # Portions of data used for training. Each of them corresponds to one evaluation.
+    portions: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    # Number of trials repeated. Change it to 1 if your evaluation set is large enough.
+    times: 5
+
+  - task: link prediction
+    # Path to link prediction file. Each line should be
+    # [node 1] [delimiter] [node 2] [delimiter] [label]
+    # where label is 1 for positive and 0 for negative.
+    file_name:
+    # Path to filter file. If you aren't sure that training data is excluded in evaluation,
+    # you can specify the training edge list here.
+    filter_file:
+
+# Comment out this section if not needed.
+save:
+  file_name: graph.pkl

@@ -17,6 +17,7 @@ conda-forge::easydict
 six
 future
 imageio
+psutil
 scipy
 matplotlib
 pytorch

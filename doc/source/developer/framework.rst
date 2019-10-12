@@ -19,15 +19,16 @@ vectors. This design enables dynamic data type in Python interface, as well as m
 compile-time optimization.
 
 The C++ interface is highly abstracted to faciliate further development on GraphVite.
-Generally, by inheriting from the core interface, you can implement your graph deep
-learning routine without caring about scheduling details.
+Generally, by inheriting from the core interface, we can implement new graph embedding
+instances without caring about any scheduling detail.
 
 The source code is organized as follows.
 
     - ``include/base/*`` implements basic data structures
-    - ``include/util/*`` implements basic utils
     - ``include/core/*`` implements optimizers, and core interface of graphs and solvers
-    - ``include/gpu/*`` implements forward & backward propagation for all models
     - ``include/instance/*`` implements instances of graphs and solvers
+    - ``include/instance/gpu/*`` implements GPU training & evaluation routine       s
+    - ``include/instance/model/*`` implements forward & backward propagation of models
+    - ``include/util/*`` implements basic utils
     - ``include/bind.h`` implements Python bindings
     - ``src/graphvite.cu`` instantiates all Python classes

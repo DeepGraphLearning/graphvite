@@ -65,17 +65,17 @@ std::string yes_no(bool x) {
     return x ? "yes" : "no";
 }
 
-std::string size_string(size_t x) {
+std::string size_string(size_t size) {
     std::stringstream ss;
     ss.precision(3);
-    if (x >= 1 << 30)
-        ss << x / float(1 << 30) << " GiB";
-    else if (x >= 1 << 20)
-        ss << x / float(1 << 20) << " MiB";
-    else if (x >= 1 << 10)
-        ss << x / float(1 << 10) << " KiB";
+    if (size >= 1 << 30)
+        ss << size / float(1 << 30) << " GiB";
+    else if (size >= 1 << 20)
+        ss << size / float(1 << 20) << " MiB";
+    else if (size >= 1 << 10)
+        ss << size / float(1 << 10) << " KiB";
     else
-        ss << x << " B";
+        ss << size << " B";
     return ss.str();
 }
 

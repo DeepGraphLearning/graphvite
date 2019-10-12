@@ -17,18 +17,20 @@
 """Implementation of applications"""
 from __future__ import print_function, absolute_import, unicode_literals, division
 
+import os
+import re
 import pickle
 import logging
 import multiprocessing
 from collections import defaultdict
 
-from future.builtins import str, map
+from future.builtins import str, map, range
 from easydict import EasyDict
 import numpy as np
 
-from .. import dtype, auto
+from .. import lib, cfg, auto
 from .. import graph, solver
-from ..util import monitor
+from ..util import assert_in, monitor, SharedNDArray
 
 logger = logging.getLogger(__name__)
 
@@ -44,18 +46,31 @@ class ApplicationMixin(object):
         float_type (dtype, optional): type of parameters
         index_type (dtype, optional): type of graph indexes
     """
-    def __init__(self, dim, gpus=[], cpu_per_gpu=auto, float_type=dtype.float32, index_type=dtype.uint32):
+    def __init__(self, dim, gpus=[], cpu_per_gpu=auto, float_type=cfg.float_type, index_type=cfg.index_type):
         self.dim = dim
         self.gpus = gpus
         self.cpu_per_gpu = cpu_per_gpu
         self.float_type = float_type
         self.index_type = index_type
+        self.set_format()
 
     def get_graph(self, **kwargs):
         raise NotImplementedError
 
     def get_solver(self, **kwargs):
         raise NotImplementedError
+
+    def set_format(self, delimiters=" \t\r\n", comment="#"):
+        """
+        Set the format for parsing input data.
+
+        Parameters:
+            delimiters (str, optional): string of delimiter characters
+            comment (str, optional): prefix of comment strings
+        """
+        self.delimiters = delimiters
+        self.comment = comment
+        self.pattern = re.compile("[%s]" % self.delimiters)
 
     @monitor.time
     def load(self, **kwargs):
@@ -64,7 +79,10 @@ class ApplicationMixin(object):
         Arguments depend on the underlying graph type.
         """
         self.graph = self.get_graph(**kwargs)
-        self.graph.load(**kwargs)
+        if "file_name" in kwargs or "vector_file" in "kwargs":
+            self.graph.load(delimiters=self.delimiters, comment=self.comment, **kwargs)
+        else:
+            self.graph.load(**kwargs)
 
     @monitor.time
     def build(self, **kwargs):
@@ -91,16 +109,21 @@ class ApplicationMixin(object):
 
         Parameters:
             task (str): name of task
-        """
-        self.solver.clear()
 
+        Returns:
+            dict: metrics and their values
+        """
         func_name = task.replace(" ", "_")
         if not hasattr(self, func_name):
             raise ValueError("Unknown task `%s`" % task)
-        logger.info("evaluate on %s" % task)
+
+        logger.info(lib.io.header(task))
         result = getattr(self, func_name)(**kwargs)
-        for metric, value in sorted(result.items()):
-            logger.warning("%s: %g" % (metric, value))
+        if isinstance(result, dict):
+            for metric, value in sorted(result.items()):
+                logger.warning("%s: %g" % (metric, value))
+
+        return result
 
     @monitor.time
     def save(self, file_name):
@@ -124,6 +147,13 @@ class ApplicationMixin(object):
 
         with open(file_name, "wb") as fout:
             pickle.dump(objects, fout, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def tokenize(self, str):
+        str = str.strip(self.delimiters)
+        comment_start = str.find(self.comment)
+        if comment_start != -1:
+            str = str[:comment_start]
+        return self.pattern.split(str)
 
     def name_map(self, dicts, names):
         assert len(dicts) == len(names), "The number of dictionaries and names must be equal"
@@ -225,9 +255,9 @@ class GraphApplication(ApplicationMixin):
         Returns:
             dict: macro-F1 & micro-F1 averaged over all trials
         """
-
         import scipy.sparse as sp
-        import torch
+
+        self.solver.clear()
 
         if file_name:
             if not (X is None and Y is None):
@@ -236,7 +266,10 @@ class GraphApplication(ApplicationMixin):
             Y = []
             with open(file_name, "r") as fin:
                 for line in fin:
-                    x, y = line.split()
+                    tokens = self.tokenize(line)
+                    if len(tokens) == 0:
+                        continue
+                    x, y = tokens
                     X.append(x)
                     Y.append(y)
         if X is None or Y is None:
@@ -249,11 +282,11 @@ class GraphApplication(ApplicationMixin):
         X = np.asarray(new_X)
         Y = np.asarray(new_Y)
 
-        labels = sp.coo_matrix((np.ones_like(X), (X, Y)), dtype=np.int).todense()
+        labels = sp.coo_matrix((np.ones_like(X), (X, Y)), dtype=np.int32).todense()
         indexes, _ = np.where(np.sum(labels, axis=1) > 0)
         # discard non-labeled nodes
         labels = labels[indexes]
-        vertex_embeddings = self.solver.vertex_embeddings[indexes]
+        vertex_embeddings = SharedNDArray(self.solver.vertex_embeddings[indexes])
 
         settings = []
         for portion in portions:
@@ -285,6 +318,8 @@ class GraphApplication(ApplicationMixin):
 
         from .network import LinkPredictor
 
+        self.solver.clear()
+
         if file_name:
             if not (H is None and T is None and Y is None):
                 raise ValueError("Evaluation data and file should not be provided at the same time")
@@ -293,7 +328,10 @@ class GraphApplication(ApplicationMixin):
             Y = []
             with open(file_name, "r") as fin:
                 for line in fin:
-                    h, t, y = line.split()
+                    tokens = self.tokenize(line)
+                    if len(tokens) == 0:
+                        continue
+                    h, t, y = tokens
                     H.append(h)
                     T.append(t)
                     Y.append(y)
@@ -307,7 +345,10 @@ class GraphApplication(ApplicationMixin):
             filter_T = []
             with open(filter_file, "r") as fin:
                 for line in fin:
-                    h, t = line.split()
+                    tokens = self.tokenize(line)
+                    if len(tokens) == 0:
+                        continue
+                    h, t = tokens
                     filter_H.append(h)
                     filter_T.append(t)
         elif filter_H is None:
@@ -379,6 +420,7 @@ def linear_classification(args):
         return torch.as_tensor(new_indexes), torch.as_tensor(new_labels)
 
     embeddings, labels, portion, normalization, times, patience, gpu = args
+    embeddings = np.asarray(embeddings)
     num_sample, num_class = labels.shape
     num_train = int(num_sample * portion)
 
@@ -423,7 +465,7 @@ def linear_classification(args):
         num_labels = test_labels.sum(dim=1, keepdim=True)
         sorted, _ = logits.sort(dim=1, descending=True)
         thresholds = sorted.gather(dim=1, index=num_labels-1)
-        predictions = (logits >= thresholds).long()
+        predictions = (logits >= thresholds).int()
         # compute metric
         num_TP_per_class = (predictions & test_labels).sum(dim=0).float()
         num_T_per_class = test_labels.sum(dim=0).float()
@@ -480,19 +522,19 @@ class KnowledgeGraphApplication(ApplicationMixin):
 
     Given a knowledge graph, it embeds each entity and relation into a continuous vector representation respectively.
     The learned embeddings can be used for analysis of knowledge graphs.
-    e.g. **entity clustering**, **link prediction**.
-    The likelihood of edges can be inferred by the score function over embeddings of triplets.
+    e.g. **entity prediction**, **link prediction**.
+    The likelihood of edges can be predicted by computing the score function over embeddings of triplets.
 
     Supported Models:
         - TransE (`Translating Embeddings for Modeling Multi-relational Data`_)
-        - DistMult (`Embedding Entities and Relations for Learnig and Inference in Knowledge Bases`_)
+        - DistMult (`Embedding Entities and Relations for Learning and Inference in Knowledge Bases`_)
         - ComplEx (`Complex Embeddings for Simple Link Prediction`_)
         - SimplE (`SimplE Embedding for Link Prediction in Knowledge Graphs`_)
         - RotatE (`RotatE: Knowledge Graph Embedding by Relational Rotation in Complex Space`_)
 
     .. _Translating Embeddings for Modeling Multi-relational Data:
         http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-relational-data.pdf
-    .. _Embedding Entities and Relations for Learnig and Inference in Knowledge Bases:
+    .. _Embedding Entities and Relations for Learning and Inference in Knowledge Bases:
         https://arxiv.org/pdf/1412.6575.pdf
     .. _Complex Embeddings for Simple Link Prediction:
         http://proceedings.mlr.press/v48/trouillon16.pdf
@@ -511,7 +553,7 @@ class KnowledgeGraphApplication(ApplicationMixin):
     Note:
         The implementation of TransE, DistMult and ComplEx, SimplE are slightly different from their original papers.
         The loss function and the regularization term generally follow `this repo`_.
-        Adversarial negative sampling is also adopted in these models like RotatE.
+        Self-adversarial negative sampling is also adopted in these models like RotatE.
 
     .. _this repo: https://github.com/DeepGraphLearning/KnowledgeGraphEmbedding
 
@@ -519,6 +561,9 @@ class KnowledgeGraphApplication(ApplicationMixin):
         :class:`KnowledgeGraph <graphvite.graph.KnowledgeGraph>`,
         :class:`KnowledgeGraphSolver <graphvite.solver.KnowledgeGraphSolver>`
     """
+
+    SAMPLE_PER_DIMENSION = 7
+    MEMORY_SCALE_FACTOR = 1.5
 
     def get_graph(self, **kwargs):
         return graph.KnowledgeGraph(self.index_type)
@@ -530,8 +575,145 @@ class KnowledgeGraphApplication(ApplicationMixin):
             num_sampler_per_worker = self.cpu_per_gpu - 1
         return solver.KnowledgeGraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker)
 
+    def entity_prediction(self, H=None, R=None, T=None, file_name=None, save_file=None, target="tail", k=10,
+                          backend=cfg.backend):
+        """
+        Predict the distribution of missing entity or relation for triplets.
+
+        Parameters:
+            H (list of str, optional): names of head entities
+            R (list of str, optional): names of relations
+            T (list of str, optional): names of tail entities
+            file_name (str, optional): file of triplets (e.g. validation set)
+            save_file (str, optional): ``txt`` or ``pkl`` file to save predictions
+            k (int, optional): top-k recalls will be returned
+            target (str, optional): 'head' or 'tail'
+            backend (str, optional): 'graphvite' or 'torch'
+
+        Return:
+            list of list of tuple: top-k recalls for each triplet, if save file is not provided
+        """
+        def torch_predict():
+            import torch
+
+            entity_embeddings = SharedNDArray(self.solver.entity_embeddings)
+            relation_embeddings = SharedNDArray(self.solver.relation_embeddings)
+
+            num_gpu = len(self.gpus) if self.gpus else torch.cuda.device_count()
+            work_load = (num_sample + num_gpu - 1) // num_gpu
+            settings = []
+
+            for i in range(num_gpu):
+                work_H = H[work_load * i: work_load * (i+1)]
+                work_R = R[work_load * i: work_load * (i+1)]
+                work_T = T[work_load * i: work_load * (i+1)]
+                settings.append((entity_embeddings, relation_embeddings, work_H, work_R, work_T,
+                                 None, None, target, k, self.solver.model, self.solver.margin))
+
+            results = self.gpu_map(triplet_prediction, settings)
+            return sum(results, [])
+
+        def graphvite_predict():
+            num_entity = len(entity2id)
+            batch_size = self.get_batch_size(num_entity)
+            recalls = []
+
+            for i in range(0, num_sample, batch_size):
+                batch_h = H[i: i + batch_size]
+                batch_r = R[i: i + batch_size]
+                batch_t = T[i: i + batch_size]
+                batch = self.generate_one_vs_rest(batch_h, batch_r, batch_t, num_entity, target)
+
+                scores = self.solver.predict(batch)
+                scores = scores.reshape(-1, num_entity)
+                indexes = np.argpartition(scores, num_entity - k, axis=-1)
+                for index, score in zip(indexes, scores):
+                    index = index[-k:]
+                    score = score[index]
+                    order = np.argsort(score)[::-1]
+                    recall = list(zip(index[order], score[order]))
+                    recalls.append(recall)
+
+            return recalls
+
+        assert_in(["head", "tail"], target=target)
+        assert_in(["graphvite", "torch"], backend=backend)
+
+        if backend == "torch":
+            self.solver.clear()
+
+        if file_name:
+            if not (H is None and R is None and T is None):
+                raise ValueError("Evaluation data and file should not be provided at the same time")
+            H = []
+            R = []
+            T = []
+            with open(file_name, "r") as fin:
+                for line in fin:
+                    tokens = self.tokenize(line)
+                    if len(tokens) == 0:
+                        continue
+                    if len(tokens) == 3:
+                        h, r, t = tokens
+                    elif target == "head":
+                        r, t = tokens
+                        h = None
+                    else:
+                        h, r = tokens
+                        t = None
+                    H.append(h)
+                    R.append(r)
+                    T.append(t)
+        if (H is None and T is None) or R is None:
+            raise ValueError("Either evaluation data or file should be provided")
+        if H is None:
+            target = "head"
+        if T is None:
+            target = "tail"
+
+        entity2id = self.graph.entity2id
+        relation2id = self.graph.relation2id
+        num_sample = len(R)
+        new_H = np.zeros(num_sample, dtype=np.uint32)
+        new_T = np.zeros(num_sample, dtype=np.uint32)
+        if target == "head":
+            new_R, new_T = self.name_map((relation2id, entity2id), (R, T))
+        if target == "tail":
+            new_H, new_R = self.name_map((entity2id, relation2id), (H, R))
+        assert len(new_R) == len(R), "Can't recognize some entities or relations"
+        H = np.asarray(new_H, dtype=np.uint32)
+        R = np.asarray(new_R, dtype=np.uint32)
+        T = np.asarray(new_T, dtype=np.uint32)
+
+        if backend == "graphvite":
+            recalls = graphvite_predict()
+        else:
+            recalls = torch_predict()
+
+        id2entity = self.graph.id2entity
+        new_recalls = []
+        for recall in recalls:
+            new_recall = [(id2entity[e], s) for e, s in recall]
+            new_recalls.append(new_recall)
+        recalls = new_recalls
+
+        if save_file:
+            extension = os.path.splitext(save_file)[1]
+            if extension == ".txt":
+                with open(save_file, "w") as fout:
+                    for recall in recalls:
+                        tokens = ["%s: %g" % x for x in recall]
+                        fout.write("%s\n" % "\t".join(tokens))
+            elif extension == ".pkl":
+                with open(save_file, "wb") as fout:
+                    pickle.dump(recalls, fout, protocol=pickle.HIGHEST_PROTOCOL)
+            else:
+                raise ValueError("Unknown file extension `%s`" % extension)
+        else:
+            return recalls
+
     def link_prediction(self, H=None, R=None, T=None, filter_H=None, filter_R=None, filter_T=None, file_name=None,
-                        filter_files=None, fast_mode=None):
+                        filter_files=None, target="both", fast_mode=None, backend=cfg.backend):
         """
         Evaluate knowledge graph embeddings on link prediction task.
 
@@ -544,12 +726,68 @@ class KnowledgeGraphApplication(ApplicationMixin):
             filter_R (list of str, optional): names of relations to filter out
             filter_T (list of str, optional): names of tail entities to filter out
             filter_files (str, optional): files of triplets to filter out (e.g. training / validation / test set)
+            target (str, optional): 'head', 'tail' or 'both'
             fast_mode (int, optional): if specified, only that number of samples will be evaluated
+            backend (str, optional): 'graphvite' or 'torch'
 
         Returns:
             dict: MR, MRR, HITS\@1, HITS\@3 & HITS\@10 of link prediction
         """
-        import torch
+        def torch_predict():
+            import torch
+
+            entity_embeddings = SharedNDArray(self.solver.entity_embeddings)
+            relation_embeddings = SharedNDArray(self.solver.relation_embeddings)
+
+            num_gpu = len(self.gpus) if self.gpus else torch.cuda.device_count()
+            work_load = (fast_mode + num_gpu - 1) // num_gpu
+            settings = []
+
+            for i in range(num_gpu):
+                work_H = H[work_load * i: work_load * (i+1)]
+                work_R = R[work_load * i: work_load * (i+1)]
+                work_T = T[work_load * i: work_load * (i+1)]
+                settings.append((entity_embeddings, relation_embeddings, work_H, work_R, work_T,
+                                 exclude_H, exclude_T, target, None, self.solver.model, self.solver.margin))
+
+            results = self.gpu_map(triplet_prediction, settings)
+            return np.concatenate(results)
+
+        def graphvite_predict():
+            num_entity = len(entity2id)
+            if target == "both":
+                batch_size = self.get_batch_size(num_entity * 2)
+            else:
+                batch_size = self.get_batch_size(num_entity)
+            rankings = []
+
+            for i in range(0, fast_mode, batch_size):
+                batch_h = H[i: i + batch_size]
+                batch_r = R[i: i + batch_size]
+                batch_t = T[i: i + batch_size]
+                batch = self.generate_one_vs_rest(batch_h, batch_r, batch_t, num_entity, target)
+                masks = self.generate_mask(batch_h, batch_r, batch_t, exclude_H, exclude_T, num_entity, target)
+                if target == "head":
+                    positives = batch_h
+                if target == "tail":
+                    positives = batch_t
+                if target == "both":
+                    positives = np.asarray([batch_h, batch_t]).transpose()
+                    positives = positives.ravel()
+
+                scores = self.solver.predict(batch)
+                scores = scores.reshape(-1, num_entity)
+                truths = scores[range(len(positives)), positives]
+                ranking = np.sum((scores >= truths[:, np.newaxis]) * masks, axis=1)
+                rankings.append(ranking)
+
+            return np.concatenate(rankings)
+
+        assert_in(["head", "tail", "both"], target=target)
+        assert_in(["graphvite", "torch"], backend=backend)
+
+        if backend == "torch":
+            self.solver.clear()
 
         if file_name:
             if not (H is None and R is None and T is None):
@@ -559,7 +797,10 @@ class KnowledgeGraphApplication(ApplicationMixin):
             T = []
             with open(file_name, "r") as fin:
                 for line in fin:
-                    h, r, t = line.split()
+                    tokens = self.tokenize(line)
+                    if len(tokens) == 0:
+                        continue
+                    h, r, t = tokens
                     H.append(h)
                     R.append(r)
                     T.append(t)
@@ -575,7 +816,10 @@ class KnowledgeGraphApplication(ApplicationMixin):
             for filter_file in filter_files:
                 with open(filter_file, "r") as fin:
                     for line in fin:
-                        h, r, t = line.split()
+                        tokens = self.tokenize(line)
+                        if len(tokens) == 0:
+                            continue
+                        h, r, t = tokens
                         filter_H.append(h)
                         filter_R.append(r)
                         filter_T.append(t)
@@ -588,14 +832,14 @@ class KnowledgeGraphApplication(ApplicationMixin):
         relation2id = self.graph.relation2id
         new_H, new_R, new_T = self.name_map((entity2id, relation2id, entity2id), (H, R, T))
         logger.info("effective triplets: %d / %d" % (len(new_H), len(H)))
-        H = np.asarray(new_H)
-        R = np.asarray(new_R)
-        T = np.asarray(new_T)
+        H = np.asarray(new_H, dtype=np.uint32)
+        R = np.asarray(new_R, dtype=np.uint32)
+        T = np.asarray(new_T, dtype=np.uint32)
         new_H, new_R, new_T = self.name_map((entity2id, relation2id, entity2id), (filter_H, filter_R, filter_T))
         logger.info("effective filter triplets: %d / %d" % (len(new_H), len(filter_H)))
-        filter_H = np.asarray(new_H)
-        filter_R = np.asarray(new_R)
-        filter_T = np.asarray(new_T)
+        filter_H = np.asarray(new_H, dtype=np.uint32)
+        filter_R = np.asarray(new_R, dtype=np.uint32)
+        filter_T = np.asarray(new_T, dtype=np.uint32)
 
         exclude_H = defaultdict(set)
         exclude_T = defaultdict(set)
@@ -609,20 +853,11 @@ class KnowledgeGraphApplication(ApplicationMixin):
         H = H[indexes]
         R = R[indexes]
         T = T[indexes]
-        entity_embeddings = self.solver.entity_embeddings
-        relation_embeddings = self.solver.relation_embeddings
 
-        num_gpu = len(self.gpus) if self.gpus else torch.cuda.device_count()
-        work_load = (fast_mode + num_gpu - 1) // num_gpu
-        settings = []
-        for i in range(num_gpu):
-            work_H = H[work_load * i: work_load * (i+1)]
-            work_R = R[work_load * i: work_load * (i+1)]
-            work_T = T[work_load * i: work_load * (i+1)]
-            settings.append((entity_embeddings, relation_embeddings,
-                             work_H, work_R, work_T, exclude_H, exclude_T, self.solver.model))
-        results = self.gpu_map(link_prediction, settings)
-        rankings = np.concatenate(results)
+        if backend == "graphvite":
+            rankings = graphvite_predict()
+        elif backend == "torch":
+            rankings = torch_predict()
 
         return {
             "MR": np.mean(rankings),
@@ -632,46 +867,128 @@ class KnowledgeGraphApplication(ApplicationMixin):
             "HITS@10": np.mean(rankings <= 10)
         }
 
+    def get_batch_size(self, sample_size):
+        import psutil
+        memory = psutil.virtual_memory()
 
-def link_prediction(args):
+        batch_size = int(self.SAMPLE_PER_DIMENSION * self.dim * self.graph.num_vertex
+                         * self.solver.num_partition / self.solver.num_worker / sample_size)
+        # 2 triplet (Python, C++ sample pool) + 1 sample index
+        mem_per_sample = sample_size * (2 * 3 * np.uint32().itemsize + 1 * np.uint64().itemsize)
+        max_batch_size = int(memory.available / mem_per_sample / self.MEMORY_SCALE_FACTOR)
+        if max_batch_size < batch_size:
+            logger.info("Memory is not enough for optimal prediction batch size."
+                        "Use the maximal possible size instead.")
+            batch_size = max_batch_size
+        return batch_size
+
+    def generate_one_vs_rest(self, H, R, T, num_entity, target="both"):
+        one = np.ones(num_entity, dtype=np.bool)
+        all = np.arange(num_entity, dtype=np.uint32)
+        batches = []
+
+        for h, r, t in zip(H, R, T):
+            if target == "head" or target == "both":
+                batch = np.asarray([all, t * one, r * one]).transpose()
+                batches.append(batch)
+            if target == "tail" or target == "both":
+                batch = np.asarray([h * one, all, r * one]).transpose()
+                batches.append(batch)
+
+        batches = np.concatenate(batches)
+        return batches
+
+    def generate_mask(self, H, R, T, exclude_H, exclude_T, num_entity, target="both"):
+        one = np.ones(num_entity, dtype=np.bool)
+        masks = []
+
+        for h, r, t in zip(H, R, T):
+            if target == "head" or target == "both":
+                mask = one.copy()
+                mask[list(exclude_H[(t, r)])] = 0
+                mask[h] = 1
+                masks.append(mask)
+            if target == "tail" or target == "both":
+                mask = one.copy()
+                mask[list(exclude_T[(h, r)])] = 0
+                mask[t] = 1
+                masks.append(mask)
+
+        masks = np.asarray(masks)
+        return masks
+
+
+def triplet_prediction(args):
     import torch
     from .network import LinkPredictor
+    torch.set_grad_enabled(False)
 
-    entity_embeddings, relation_embeddings, H, R, T, exclude_H, exclude_T, score_function, gpu = args
+    entity_embeddings, relation_embeddings, H, R, T, \
+    exclude_H, exclude_T, target, k, score_function, margin, device = args
+    entity_embeddings = np.asarray(entity_embeddings)
+    relation_embeddings = np.asarray(relation_embeddings)
     num_entity = len(entity_embeddings)
-    model = LinkPredictor(score_function, entity_embeddings, relation_embeddings, entity_embeddings)
-    model = model.cuda(gpu)
+    score_function = LinkPredictor(score_function, entity_embeddings, relation_embeddings, entity_embeddings,
+                                   margin=margin)
 
-    rankings = []
+    if device != "cpu":
+        try:
+            score_function = score_function.to(device)
+        except RuntimeError:
+            logger.info("Model is too large for GPU evaluation with PyTorch. Switch to CPU evaluation.")
+            device = "cpu"
+        if device == "cpu":
+            del score_function
+            torch.cuda.empty_cache()
+            score_function = LinkPredictor(score_function, entity_embeddings, relation_embeddings, entity_embeddings,
+                                           margin=margin)
+
+    one = torch.ones(num_entity, dtype=torch.long, device=device)
+    all = torch.arange(num_entity, dtype=torch.long, device=device)
+    results = [] # rankings or top-k recalls
+
     for h, r, t in zip(H, R, T):
-        negatives = list(set(range(num_entity)) - exclude_T[(h, r)])
-        batch_size = len(negatives) + 1
+        if target == "head" or target == "both":
+            batch_h = all
+            batch_r = r * one
+            batch_t = t * one
+            score = score_function(batch_h, batch_r, batch_t)
+            if k: # top-k recalls
+                score, index = torch.topk(score, k)
+                score = score.cpu().numpy()
+                index = index.cpu().numpy()
+                recall = list(zip(index, score))
+                results.append(recall)
+            else: # ranking
+                mask = torch.ones(num_entity, dtype=torch.uint8, device=device)
+                index = torch.tensor(list(exclude_H[(t, r)]), dtype=torch.long, device=device)
+                mask[index] = 0
+                mask[h] = 1
+                ranking = torch.sum((score >= score[h]) * mask).item()
+                results.append(ranking)
 
-        batch_h = h * torch.ones(batch_size, dtype=torch.long)
-        batch_r = r * torch.ones(batch_size, dtype=torch.long)
-        batch_t = torch.as_tensor([t] + negatives)
-        batch_h = batch_h.cuda(gpu)
-        batch_r = batch_r.cuda(gpu)
-        batch_t = batch_t.cuda(gpu)
+        if target == "tail" or target == "both":
+            batch_h = h * one
+            batch_r = r * one
+            batch_t = all
+            score = score_function(batch_h, batch_r, batch_t)
+            if k: # top-k recalls
+                score, index = torch.topk(score, k)
+                score = score.cpu().numpy()
+                index = index.cpu().numpy()
+                recall = list(zip(index, score))
+                results.append(recall)
+            else: # ranking
+                mask = torch.ones(num_entity, dtype=torch.uint8, device=device)
+                index = torch.tensor(list(exclude_T[(h, r)]), dtype=torch.long, device=device)
+                mask[index] = 0
+                mask[t] = 1
+                ranking = torch.sum((score >= score[t]) * mask).item()
+                results.append(ranking)
 
-        score = model(batch_h, batch_r, batch_t)
-        rankings.append((score >= score[0]).sum().item())
-
-        negatives = list(set(range(num_entity)) - exclude_H[(t, r)])
-        batch_size = len(negatives) + 1
-
-        batch_h = torch.as_tensor([h] + negatives)
-        batch_r = r * torch.ones(batch_size, dtype=torch.long)
-        batch_t = t * torch.ones(batch_size, dtype=torch.long)
-        batch_h = batch_h.cuda(gpu)
-        batch_r = batch_r.cuda(gpu)
-        batch_t = batch_t.cuda(gpu)
-
-        score = model(batch_h, batch_r, batch_t)
-        rankings.append((score >= score[0]).sum().item())
-
-    rankings = np.asarray(rankings)
-    return rankings
+    if not k: # ranking
+        results = np.asarray(results)
+    return results
 
 
 class VisualizationApplication(ApplicationMixin):
@@ -732,6 +1049,8 @@ class VisualizationApplication(ApplicationMixin):
         from matplotlib import pyplot as plt
         plt.switch_backend("agg") # for compatibility
 
+        self.solver.clear()
+
         coordinates = self.solver.coordinates
         dim = coordinates.shape[1]
         if not (dim == 2 or dim == 3):
@@ -740,8 +1059,14 @@ class VisualizationApplication(ApplicationMixin):
         if file_name:
             if not (Y is None):
                 raise ValueError("Evaluation data and file should not be provided at the same time")
+            Y = []
             with open(file_name, "r") as fin:
-                Y = [line.strip() for line in fin]
+                for line in fin:
+                    tokens = self.tokenize(line)
+                    if len(tokens) == 0:
+                        continue
+                    y, = tokens
+                    Y.append(y)
         elif Y is None:
             Y = ["unknown"] * self.graph.num_vertex
         Y = np.asarray(Y)
@@ -795,6 +1120,8 @@ class VisualizationApplication(ApplicationMixin):
         from matplotlib import pyplot as plt
         plt.switch_backend("agg") # for compatibility
 
+        self.solver.clear()
+
         coordinates = self.solver.coordinates
         dim = coordinates.shape[1]
         if dim != 2:
@@ -803,8 +1130,12 @@ class VisualizationApplication(ApplicationMixin):
         if file_name:
             if not (HY is None):
                 raise ValueError("Evaluation data and file should not be provided at the same time")
+            HY = []
             with open(file_name, "r") as fin:
-                HY = [line.split() for line in fin]
+                for line in fin:
+                    tokens = self.tokenize(line)
+                    if len(tokens) > 0:
+                        HY.append(tokens)
         elif HY is None:
             raise ValueError("No label is provided for hierarchy")
         HY = np.asarray(HY)
@@ -858,6 +1189,8 @@ class VisualizationApplication(ApplicationMixin):
         from mpl_toolkits.mplot3d import Axes3D
         plt.switch_backend("agg") # for compatibility
 
+        self.solver.clear()
+
         coordinates = self.solver.coordinates
         dim = coordinates.shape[1]
         if dim != 3:
@@ -866,8 +1199,14 @@ class VisualizationApplication(ApplicationMixin):
         if file_name:
             if not (Y is None):
                 raise ValueError("Evaluation data and file should not be provided at the same time")
+            Y = []
             with open(file_name, "r") as fin:
-                Y = [line.strip() for line in fin]
+                for line in fin:
+                    tokens = self.tokenize(line)
+                    if len(tokens) == 0:
+                        continue
+                    y, = tokens
+                    Y.append(y)
         elif Y is None:
             Y = ["unknown"] * self.graph.num_vertex
         Y = np.asarray(Y)
@@ -953,13 +1292,13 @@ class Application(object):
 
     Parameters:
         type (str): application type,
-            can be 'graph', 'word_graph', 'knowledge_graph' or 'visualization'
+            can be 'graph', 'word graph', 'knowledge graph' or 'visualization'
     """
 
     application = {
         "graph": GraphApplication,
-        "word_graph": WordGraphApplication,
-        "knowledge_graph": KnowledgeGraphApplication,
+        "word graph": WordGraphApplication,
+        "knowledge graph": KnowledgeGraphApplication,
         "visualization": VisualizationApplication
     }
 

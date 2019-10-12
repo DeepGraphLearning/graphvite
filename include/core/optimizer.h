@@ -96,7 +96,7 @@ public:
  * - add a value in OptimizerType
  * - implement an update function in Optimizer
  * - implement a helper class for that optimizer
- * - instantiate kernels with the optimizer in Worker::kernel_dispatch()
+ * - instantiate kernels with the optimizer in Worker::train_dispatch() and Worker::predict_dispatch()
  * - add python binding of the helper class in bind.h & graphvite.cu
  */
 class Optimizer {
@@ -219,12 +219,12 @@ protected:
 /**
  * @brief Compile-time binding of 0-moment optimizers
  * @tparam Float floating type of parameters
- * @tparam type type of optimizer
+ * @tparam optimizer_type type of optimizer
  * @return the update function of the optimizer
  */
-template<class Float, OptimizerType type>
-__device__ decltype(&Optimizer::sgd_update<Float>) get_update_function() {
-    switch (type) {
+template<class Float, OptimizerType optimizer_type>
+__host__ __device__ decltype(&Optimizer::sgd_update<Float>) get_update_function() {
+    switch (optimizer_type) {
         case kSGD:
             return &Optimizer::sgd_update<Float>;
         default:
@@ -235,12 +235,12 @@ __device__ decltype(&Optimizer::sgd_update<Float>) get_update_function() {
 /**
  * @brief Compile-time binding of 1-moment optimizers
  * @tparam Float floating type of parameters
- * @tparam type type of optimizer
+ * @tparam optimizer_type type of optimizer
  * @return the update function of the optimizer
  */
-template<class Float, OptimizerType type>
-__device__ decltype(&Optimizer::momentum_update<Float>) get_update_function_1_moment() {
-    switch (type) {
+template<class Float, OptimizerType optimizer_type>
+__host__ __device__ decltype(&Optimizer::momentum_update<Float>) get_update_function_1_moment() {
+    switch (optimizer_type) {
         case kMomentum:
             return &Optimizer::momentum_update<Float>;
         case kAdaGrad:
@@ -255,12 +255,12 @@ __device__ decltype(&Optimizer::momentum_update<Float>) get_update_function_1_mo
 /**
  * @brief Compile-time binding of 2-moment optimizers
  * @tparam Float floating type of parameters
- * @tparam type type of optimizer
+ * @tparam optimizer_type type of optimizer
  * @return the update function of the optimizer
  */
-template<class Float, OptimizerType type>
-__device__ decltype(&Optimizer::adam_update<Float>) get_update_function_2_moment() {
-    switch (type) {
+template<class Float, OptimizerType optimizer_type>
+__host__ __device__ decltype(&Optimizer::adam_update<Float>) get_update_function_2_moment() {
+    switch (optimizer_type) {
         case kAdam:
             return &Optimizer::adam_update<Float>;
         default:

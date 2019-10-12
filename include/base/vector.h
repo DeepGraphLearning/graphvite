@@ -30,7 +30,7 @@ namespace graphvite {
  */
 template<size_t _dim, class _Float = float>
 class Vector {
-    // static_assert(std::is_floating_point<_Float>::value, "Vector can only be instantiated with floating point types");
+     static_assert(std::is_floating_point<_Float>::value, "Vector can only be instantiated with floating point types");
     // static_assert(_dim % gpu::kWarpSize == 0, "`dim` should be divided by 32");
 public:
     static const size_t dim = _dim;
@@ -40,8 +40,10 @@ public:
 
     /** Default constructor */
     Vector() = default;
+
     /** Construct a vector of repeat scalar */
     Vector(Float f) {
+#pragma unroll
         for (Index i = 0; i < dim; i++)
             data[i] = f;
     }
@@ -52,6 +54,18 @@ public:
 
     __host__ __device__ Float operator[](Index index) const {
         return data[index];
+    }
+
+    __host__ __device__ Vector &operator=(const Vector &v) {
+#if __CUDA_ARCH__
+        using namespace gpu;
+        const int lane_id = threadIdx.x % kWarpSize;
+        for (Index i = lane_id; i < dim; i += kWarpSize)
+#else
+        for (Index i = 0; i < dim; i++)
+#endif
+            data[i] = v[i];
+        return *this;
     }
 
     Vector &operator =(Float f) {

@@ -23,7 +23,7 @@ import logging
 from easydict import EasyDict
 
 from . import lib, dtype
-from .util import recursive_default
+from .util import recursive_default, assert_in
 
 
 root = os.path.expanduser("~/.graphvite")
@@ -32,6 +32,7 @@ if not os.path.exists(root):
 
 # default config
 default = EasyDict()
+default.backend = "graphvite"
 default.dataset_path = os.path.join(root, "dataset")
 default.float_type = dtype.float32
 default.index_type = dtype.uint32
@@ -45,6 +46,8 @@ def load_global_config():
         cfg = recursive_default(cfg, default)
     else:
         cfg = default
+
+    assert_in(["graphvite", "torch"], backend=cfg.backend)
     if not os.path.exists(cfg.dataset_path):
         os.mkdir(cfg.dataset_path)
     if isinstance(cfg.float_type, str):

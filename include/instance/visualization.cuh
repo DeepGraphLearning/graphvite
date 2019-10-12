@@ -21,12 +21,16 @@
 #include <thread>
 #include <unordered_map>
 #include <cuda_runtime.h>
+#include <pybind11/numpy.h>
 #include "faiss/gpu/GpuIndexFlat.h"
 #include "faiss/gpu/StandardGpuResources.h"
 
 #include "graph.cuh"
 #include "core/solver.h"
+#include "model/visualization.h"
 #include "gpu/visualization.cuh"
+
+namespace py = pybind11;
 
 /**
  * @page Graph & High-dimensional Data Visualization
@@ -186,23 +190,26 @@ public:
                 float weight = std::get<1>(vertex_edge);
                 norm += weight;
             }
-            float low = 0, high = num_neighbor * kLogitClip / norm, beta;
+            float low = -1, high = -1, beta = 1;
             for (int j = 0; j < 100; j++) {
                 norm = 0;
                 entropy = 0;
-                beta = (low + high) / 2;
                 for (auto &&vertex_edge : vertex_edges[i]) {
                     float weight = std::get<1>(vertex_edge);
-                    norm += exp(-beta * weight);
-                    entropy += beta * weight * exp(-beta * weight);
+                    norm += std::exp(-beta * weight);
+                    entropy += beta * weight * std::exp(-beta * weight);
                 }
                 entropy = entropy / norm + log(norm);
                 if (abs(entropy - log(perplexity)) < 1e-5)
                     break;
-                if (entropy > log(perplexity))
+                if (entropy > log(perplexity)) {
                     low = beta;
-                else
+                    beta = high < 0 ? beta * 2 : (beta + high) / 2;
+                }
+                else {
                     high = beta;
+                    beta = low < 0 ? beta / 2 : (beta + high) / 2;
+                }
             }
             for (auto &&vertex_edge : vertex_edges[i]) {
                 float &weight = std::get<1>(vertex_edge);
@@ -312,6 +319,8 @@ public:
                 vectors.push_back(f);
                 current_dim++;
             }
+            if (!current_dim)
+                continue;
             if (!dim)
                 dim = current_dim;
             CHECK(current_dim == dim)
@@ -352,6 +361,28 @@ public:
 
         LOG(WARNING) << pretty::block(info());
     }
+
+    void load_numpy(const py::array_t<float> &_array, int _num_neighbor = 200, float _perplexity = 30,
+                    bool _normalized_vector = true) {
+        CHECK(_array.ndim() == 2) << "Expect a 2d array, but a " << _array.ndim() << "d array is found";
+        clear();
+
+        num_neighbor = _num_neighbor;
+        perplexity = _perplexity;
+        CHECK(perplexity <= num_neighbor) << "`perplexity` should be no larger than `#neighbor`";
+        vector_normalization = _normalized_vector;
+
+        auto array = _array.unchecked();
+        num_vertex = array.shape(0);
+        dim = array.shape(1);
+        vectors.resize(array.size());
+        for (Index i = 0; i < num_vertex; i++)
+            for (int j = 0; j < dim; j++)
+                vectors[i * dim + j] = array(i, j);
+        build();
+
+        LOG(WARNING) << pretty::block(info());
+    }
 };
 
 template <size_t _dim, class _Float, class _Index>
@@ -381,73 +412,69 @@ class VisualizationWorker : public WorkerMixin<_Solver> {
     typedef VisualizationSolver<Solver::dim, Float, Index> VisualizationSolver;
 
     /**
-     * Call the corresponding GPU kernel
+     * Call the corresponding GPU kernel for training
      * (LargeVis) * (SGD, Momentum, AdaGrad, RMSprop, Adam)
      */
-    bool kernel_dispatch() override {
+    bool train_dispatch() override {
         using namespace gpu;
         VisualizationSolver *solver = reinterpret_cast<VisualizationSolver *>(this->solver);
 
         switch (num_moment) {
             case 0: {
-                decltype(&largevis::train<Vector, Index, kSGD>) train = nullptr;
+                decltype(&visualization::train<Vector, Index, LargeVis, kSGD>) train = nullptr;
                 if (solver->model == "LargeVis") {
                     if (optimizer.type == "SGD")
-                        train = &largevis::train<Vector, Index, kSGD>;
+                        train = &visualization::train<Vector, Index, LargeVis, kSGD>;
                 }
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
-                            (*embeddings[0], *embeddings[1], batch, negative_batch, optimizer, solver->negative_weight
-#ifdef USE_LOSS
-                            , this->loss
-#endif
+                            (*embeddings[0], *embeddings[1], batch, negative_batch, loss,
+                                    optimizer, solver->negative_weight
                     );
                     return true;
                 }
                 break;
             }
             case 1: {
-                decltype(&largevis::train_1_moment<Vector, Index, kMomentum>) train = nullptr;
+                decltype(&visualization::train_1_moment<Vector, Index, LargeVis, kMomentum>) train = nullptr;
                 if (solver->model == "LargeVis") {
                     if (optimizer.type == "Momentum")
-                        train = &largevis::train_1_moment<Vector, Index, kMomentum>;
+                        train = &visualization::train_1_moment<Vector, Index, LargeVis, kMomentum>;
                     if (optimizer.type == "AdaGrad")
-                        train = &largevis::train_1_moment<Vector, Index, kAdaGrad>;
+                        train = &visualization::train_1_moment<Vector, Index, LargeVis, kAdaGrad>;
                     if (optimizer.type == "RMSprop")
-                        train = &largevis::train_1_moment<Vector, Index, kRMSprop>;
+                        train = &visualization::train_1_moment<Vector, Index, LargeVis, kRMSprop>;
                 }
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
                             (*embeddings[0], *embeddings[1], (*moments[0])[0], (*moments[1])[0],
-                                    batch, negative_batch, optimizer, solver->negative_weight
-#ifdef USE_LOSS
-                            , this->loss
-#endif
+                                    batch, negative_batch, loss, optimizer, solver->negative_weight
                     );
                     return true;
                 }
                 break;
             }
             case 2: {
-                decltype(&largevis::train_2_moment<Vector, Index, kAdam>) train = nullptr;
+                decltype(&visualization::train_2_moment<Vector, Index, LargeVis, kAdam>) train = nullptr;
                 if (solver->model == "LargeVis") {
                     if (optimizer.type == "Adam")
-                        train = &largevis::train_2_moment<Vector, Index, kAdam>;
+                        train = &visualization::train_2_moment<Vector, Index, LargeVis, kAdam>;
                 }
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
                             (*embeddings[0], *embeddings[1],
                                     (*moments[0])[0], (*moments[1])[0], (*moments[0])[1], (*moments[1])[1],
-                                    batch, negative_batch, optimizer, solver->negative_weight
-#ifdef USE_LOSS
-                            , this->loss
-#endif
+                                    batch, negative_batch, loss, optimizer, solver->negative_weight
                     );
                     return true;
                 }
                 break;
             }
         }
+        return false;
+    }
+
+    virtual bool predict_dispatch() {
         return false;
     }
 };

@@ -7,7 +7,7 @@ resource:
   dim: 128
 
 graph:
-  file_name: <youtube.train>
+  file_name: <youtube.graph>
   as_undirected: true
 
 build:

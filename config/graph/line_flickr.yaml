@@ -7,7 +7,7 @@ resource:
   dim: 128
 
 graph:
-  file_name: <flickr.train>
+  file_name: <flickr.graph>
   as_undirected: true
 
 build:

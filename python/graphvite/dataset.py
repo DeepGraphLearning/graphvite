@@ -28,6 +28,7 @@ Graph
 
 Knowledge Graph
 
+- :class:`Math`
 - :class:`FB15k`
 - :class:`FB15k237`
 - :class:`WN18`
@@ -40,7 +41,7 @@ Visualization
 - :class:`CIFAR10`
 - :class:`ImageNet`
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, division
 
 import os
 import glob
@@ -96,10 +97,10 @@ class Dataset(object):
 
     See also:
         Pre-defined preprocess functions
-        :func:`csv2txt`
+        :func:`csv2txt`,
         :func:`top_k_label`,
-        :func:`induced_graph`
-        :func:`link_prediction_split`
+        :func:`induced_graph`,
+        :func:`link_prediction_split`,
         :func:`image_feature_data`
     """
     def __init__(self, name, urls=None, members=None):
@@ -184,7 +185,7 @@ class Dataset(object):
         preprocess = getattr(self, preprocess_name, None)
         if len(urls) > 1 and preprocess is None:
             raise AttributeError(
-                "There are non-trivial number of files, but function `%s` is not found" % preprocess_name)
+                "There are non-trivial number of files,but function `%s` is not found" % preprocess_name)
 
         extract_files = []
         for url, member in zip(urls, members):
@@ -286,52 +287,59 @@ class Dataset(object):
                         continue
                     fout.write("%s\t%s\n" % (u, v))
 
-    def link_prediction_split(self, graph_file, train_file, test_file, portion):
+    def link_prediction_split(self, graph_file, files, portions):
         """
-        Split a graph for link prediction use. The test split will contain half true and half false edges.
+        Divide a normal graph into a train split and several test splits for link prediction use.
+        Each test split contains half true and half false edges.
 
         Parameters:
             graph_file (str): graph file
-            train_file (str): train file
-            test_file (str): test file
-            portion (str): portion of test edges
+            files (list of str): file names,
+                the first file is treated as train file
+            portions (list of float): split portions
         """
-        logger.info("splitting graph %s into %s and %s" %
-              (self.relpath(graph_file), self.relpath(train_file), self.relpath(test_file)))
+        assert len(files) == len(portions)
+        logger.info("splitting graph %s into %s" %
+                    (self.relpath(graph_file), ", ".join([self.relpath(file) for file in files])))
         np.random.seed(1024)
 
         nodes = set()
         edges = set()
-        num_test = 0
-        with open(graph_file, "r") as fin, open(train_file, "w") as ftrain, open(test_file, "w") as ftest:
+        portions = np.cumsum(portions, dtype=np.float32) / np.sum(portions)
+        files = [open(file, "w") for file in files]
+        num_edges = [0] * len(files)
+        with open(graph_file, "r") as fin:
             for line in fin:
                 u, v = line.split()
                 nodes.update([u, v])
                 edges.add((u, v))
-                if np.random.rand() > portion:
-                    ftrain.write("%s\t%s\n" % (u, v))
+                i = np.searchsorted(portions, np.random.rand())
+                if i == 0:
+                    files[i].write("%s\t%s\n" % (u, v))
                 else:
-                    ftest.write("%s\t%s\t1\n" % (u, v))
-                    num_test += 1
+                    files[i].write("%s\t%s\t1\n" % (u, v))
+                num_edges[i] += 1
 
         nodes = list(nodes)
-        with open(test_file, "a") as ftest:
-            for i in range(num_test):
+        for file, num_edge in zip(files[1:], num_edges[1:]):
+            for _ in range(num_edge):
                 valid = False
                 while not valid:
                     u = nodes[int(np.random.rand() * len(nodes))]
                     v = nodes[int(np.random.rand() * len(nodes))]
                     valid = u != v and (u, v) not in edges and (v, u) not in edges
-                ftest.write("%s\t%s\t0\n" % (u, v))
+                file.write("%s\t%s\t0\n" % (u, v))
+        for file in files:
+            file.close()
 
     def image_feature_data(self, dataset, model="resnet50", batch_size=128):
         """
-        Infer feature vectors on a dataset using a neural network.
+        Compute feature vectors for an image dataset using a neural network.
 
         Parameters:
             dataset (torch.utils.data.Dataset): dataset
             model (str or torch.nn.Module, optional): pretrained model.
-                If it is a str, use the last hidden layer of that model.
+                If it is a str, use the last hidden model of that model.
             batch_size (int, optional): batch size
         """
         import torch
@@ -366,27 +374,47 @@ class BlogCatalog(Dataset):
     BlogCatalog social network dataset.
 
     Splits:
-        train, label
+        graph, label, train, test
+
+    Train and test splits are used for link prediction purpose.
     """
 
     def __init__(self):
         super(BlogCatalog, self).__init__(
             "blogcatalog",
             urls={
-                "train": "http://socialcomputing.asu.edu/uploads/1283153973/BlogCatalog-dataset.zip",
-                "label": "http://socialcomputing.asu.edu/uploads/1283153973/BlogCatalog-dataset.zip"
+                "graph": "http://socialcomputing.asu.edu/uploads/1283153973/BlogCatalog-dataset.zip",
+                "label": "http://socialcomputing.asu.edu/uploads/1283153973/BlogCatalog-dataset.zip",
+                "train": [], # depends on `graph`
+                "valid": [], # depends on `graph`
+                "test": [] # depends on `graph`
             },
             members={
-                "train": "BlogCatalog-dataset/data/edges.csv",
+                "graph": "BlogCatalog-dataset/data/edges.csv",
                 "label": "BlogCatalog-dataset/data/group-edges.csv"
             }
         )
 
-    def train_preprocess(self, raw_file, save_file):
+    def graph_preprocess(self, raw_file, save_file):
         self.csv2txt(raw_file, save_file)
 
     def label_preprocess(self, raw_file, save_file):
         self.csv2txt(raw_file, save_file)
+
+    def train_preprocess(self, train_file):
+        valid_file = train_file[:train_file.rfind("train.txt")] + "valid.txt"
+        test_file = train_file[:train_file.rfind("train.txt")] + "test.txt"
+        self.link_prediction_split(self.graph, [train_file, valid_file, test_file], portions=[100, 1, 1])
+
+    def valid_preprocess(self, valid_file):
+        train_file = valid_file[:valid_file.rfind("valid.txt")] + "train.txt"
+        test_file = valid_file[:valid_file.rfind("valid.txt")] + "test.txt"
+        self.link_prediction_split(self.graph, [train_file, valid_file, test_file], portions=[100, 1, 1])
+
+    def test_preprocess(self, test_file):
+        train_file = test_file[:test_file.rfind("test.txt")] + "train.txt"
+        valid_file = test_file[:test_file.rfind("test.txt")] + "valid.txt"
+        self.link_prediction_split(self.graph, [train_file, valid_file, test_file], portions=[100, 1, 1])
 
 
 class Youtube(Dataset):
@@ -394,13 +422,13 @@ class Youtube(Dataset):
     Youtube social network dataset.
 
     Splits:
-        train, label
+        graph, label
     """
     def __init__(self):
         super(Youtube, self).__init__(
             "youtube",
             urls={
-                "train": "http://socialnetworks.mpi-sws.mpg.de/data/youtube-links.txt.gz",
+                "graph": "http://socialnetworks.mpi-sws.mpg.de/data/youtube-links.txt.gz",
                 "label": "http://socialnetworks.mpi-sws.mpg.de/data/youtube-groupmemberships.txt.gz"
             }
         )
@@ -414,13 +442,13 @@ class Flickr(Dataset):
     Flickr social network dataset.
 
     Splits:
-        train, label
+        graph, label
     """
     def __init__(self):
         super(Flickr, self).__init__(
             "flickr",
             urls={
-                "train": "http://socialnetworks.mpi-sws.mpg.de/data/flickr-links.txt.gz",
+                "graph": "http://socialnetworks.mpi-sws.mpg.de/data/flickr-links.txt.gz",
                 "label": "http://socialnetworks.mpi-sws.mpg.de/data/flickr-groupmemberships.txt.gz"
             }
         )
@@ -441,17 +469,25 @@ class Hyperlink2012(Dataset):
             "hyperlink2012",
             urls={
                 "pld_train": "http://data.dws.informatik.uni-mannheim.de/hyperlinkgraph/2012-08/pld-arc.gz",
+                "pld_valid": "http://data.dws.informatik.uni-mannheim.de/hyperlinkgraph/2012-08/pld-arc.gz",
                 "pld_test": "http://data.dws.informatik.uni-mannheim.de/hyperlinkgraph/2012-08/pld-arc.gz"
             }
         )
 
     def pld_train_preprocess(self, graph_file, train_file):
+        valid_file = train_file[:train_file.rfind("pld_train.txt")] + "pld_valid.txt"
         test_file = train_file[:train_file.rfind("pld_train.txt")] + "pld_test.txt"
-        self.link_prediction_split(graph_file, train_file, test_file, portion=1e-4)
+        self.link_prediction_split(graph_file, [train_file, valid_file, test_file], portions=[10000, 1, 1])
+
+    def pld_valid_preprocess(self, graph_file, valid_file):
+        train_file = valid_file[:valid_file.rfind("pld_valid.txt")] + "pld_train.txt"
+        test_file = valid_file[:valid_file.rfind("pld_valid.txt")] + "pld_test.txt"
+        self.link_prediction_split(graph_file, [train_file, valid_file, test_file], portions=[10000, 1, 1])
 
     def pld_test_preprocess(self, graph_file, test_file):
         train_file = test_file[:test_file.rfind("pld_test.txt")] + "pld_train.txt"
-        self.link_prediction_split(graph_file, train_file, test_file, portion=1e-4)
+        valid_file = test_file[:test_file.rfind("pld_test.txt")] + "pld_valid.txt"
+        self.link_prediction_split(graph_file, [train_file, valid_file, test_file], portions=[10000, 1, 1])
 
 
 class Friendster(Dataset):
@@ -459,20 +495,20 @@ class Friendster(Dataset):
     Friendster social network dataset.
 
     Splits:
-        train, small_train, label
+        graph, small_graph, label
     """
     def __init__(self):
         super(Friendster, self).__init__(
             "friendster",
             urls={
-                "train": "https://snap.stanford.edu/data/bigdata/communities/com-friendster.ungraph.txt.gz",
-                "small_train": ["https://snap.stanford.edu/data/bigdata/communities/com-friendster.ungraph.txt.gz",
+                "graph": "https://snap.stanford.edu/data/bigdata/communities/com-friendster.ungraph.txt.gz",
+                "small_graph": ["https://snap.stanford.edu/data/bigdata/communities/com-friendster.ungraph.txt.gz",
                                 "https://snap.stanford.edu/data/bigdata/communities/com-friendster.all.cmty.txt.gz"],
                 "label": "https://snap.stanford.edu/data/bigdata/communities/com-friendster.top5000.cmty.txt.gz"
             }
         )
 
-    def small_train_preprocess(self, graph_file, label_file, save_file):
+    def small_graph_preprocess(self, graph_file, label_file, save_file):
         self.induced_graph(graph_file, label_file, save_file)
 
     def label_preprocess(self, label_file, save_file):
@@ -484,15 +520,65 @@ class Wikipedia(Dataset):
     Wikipedia dump for word embedding.
 
     Splits:
-        train
+        graph
     """
     def __init__(self):
         super(Wikipedia, self).__init__(
             "wikipedia",
             urls={
-                "train": "https://www.dropbox.com/s/mwt4uu1qu9fflfk/enwiki-latest-pages-articles-sentences.txt.gz"
+                "graph": "https://www.dropbox.com/s/mwt4uu1qu9fflfk/enwiki-latest-pages-articles-sentences.txt.gz"
             }
         )
+
+
+class Math(Dataset):
+    """
+    Synthetic math knowledge graph dataset.
+
+    Splits:
+        train, valid, test
+    """
+
+    NUM_ENTITY = 1000
+    NUM_RELATION = 30
+    OPERATORS = [
+        ("+", lambda x, y: (x + y) % Math.NUM_ENTITY),
+        ("-", lambda x, y: (x - y) % Math.NUM_ENTITY),
+        ("*", lambda x, y: (x * y) % Math.NUM_ENTITY),
+        ("/", lambda x, y: x // y),
+        ("%", lambda x, y: x % y)
+    ]
+
+    def __init__(self):
+        super(Math, self).__init__(
+            "math",
+            urls={
+                "train": [],
+                "valid": [],
+                "test": []
+            }
+        )
+
+    def train_preprocess(self, save_file):
+        np.random.seed(1023)
+        self.generate_math(save_file, num_triplet=20000)
+
+    def valid_preprocess(self, save_file):
+        np.random.seed(1024)
+        self.generate_math(save_file, num_triplet=1000)
+
+    def test_preprocess(self, save_file):
+        np.random.seed(1025)
+        self.generate_math(save_file, num_triplet=1000)
+
+    def generate_math(self, save_file, num_triplet):
+        with open(save_file, "w") as fout:
+            for _ in range(num_triplet):
+                i = int(np.random.rand() * len(self.OPERATORS))
+                op, f = self.OPERATORS[i]
+                x = int(np.random.rand() * self.NUM_ENTITY)
+                y = int(np.random.rand() * self.NUM_RELATION) + 1
+                fout.write("%d\t%s%d\t%d\n" % (x, op, y, f(x, y)))
 
 
 class FB15k(Dataset):
@@ -769,11 +855,8 @@ class ImageNet(Dataset):
             for hierarchy in zip(*hierarchies):
                 fout.write("%s\n" % "\t".join(hierarchy))
 
-    def cached_feature_data(self, image_path, save_file):
-        numpy_file = os.path.splitext(save_file)[0] + ".npy"
-        if os.path.exists(numpy_file):
-            return np.load(numpy_file)
-
+    def image_feature_data(self, image_path):
+        """"""
         import torchvision
         from torchvision import transforms
 
@@ -784,8 +867,7 @@ class ImageNet(Dataset):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
         dataset = torchvision.datasets.ImageFolder(image_path, augmentation)
-        features = self.image_feature_data(dataset)
-        np.save(numpy_file, features)
+        features = super(self, ImageNet).image_feature_data(dataset)
 
         return features
 
@@ -801,7 +883,12 @@ class ImageNet(Dataset):
         return image_path
 
     def train_feature_data_preprocess(self, save_file):
-        return self.cached_feature_data(self.train_image, save_file)
+        numpy_file = os.path.splitext(save_file)[0] + ".npy"
+        if os.path.exists(numpy_file):
+            return np.load(numpy_file)
+        features = self.image_feature_data(self.train_image, save_file)
+        np.save(numpy_file, features)
+        return features
 
     def train_label_preprocess(self, save_file):
         image_files = glob.glob(os.path.join(self.train_image, "*/*.JPEG"))
@@ -842,7 +929,12 @@ class ImageNet(Dataset):
         return image_path
 
     def valid_feature_data_preprocess(self, save_file):
-        return self.cached_feature_data(self.valid_image, save_file)
+        numpy_file = os.path.splitext(save_file)[0] + ".npy"
+        if os.path.exists(numpy_file):
+            return np.load(numpy_file)
+        features = self.image_feature_data(self.valid_image, save_file)
+        np.save(numpy_file, features)
+        return features
 
     def valid_label_preprocess(self, meta_path, save_file):
         from scipy.io import loadmat
@@ -887,7 +979,6 @@ class ImageNet(Dataset):
         with open(save_file, "w") as fout:
             with open(self.train_hierarchical_label, "r") as fin:
                 shutil.copyfileobj(fin, fout)
-        with open(save_file, "a") as fout:
             with open(self.valid_hierarchical_label, "r") as fin:
                 shutil.copyfileobj(fin, fout)
 
@@ -899,6 +990,7 @@ hyperlink2012 = Hyperlink2012()
 friendster = Friendster()
 wikipedia = Wikipedia()
 
+math = Math()
 fb15k = FB15k()
 fb15k237 = FB15k237()
 wn18 = WN18()
@@ -912,6 +1004,6 @@ imagenet = ImageNet()
 __all__ = [
     "Dataset",
     "BlogCatalog", "Youtube", "Flickr", "Hyperlink2012", "Friendster", "Wikipedia",
-    "FB15k", "FB15k237", "WN18", "WN18RR", "Freebase",
+    "Math", "FB15k", "FB15k237", "WN18", "WN18RR", "Freebase",
     "MNIST", "CIFAR10", "ImageNet"
 ]

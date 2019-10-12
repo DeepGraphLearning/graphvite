@@ -89,12 +89,13 @@ public:
             return;
 
         size_t offset = 0;
+        flat_offsets.resize(num_vertex);
         for (Index u = 0; u < num_vertex; u++) {
             for (auto &&vertex_edge : vertex_edges[u]) {
                 edges.push_back(std::tuple_cat(std::tie(u), vertex_edge));
                 edge_weights.push_back(std::get<1>(vertex_edge));
             }
-            flat_offsets.push_back(offset);
+            flat_offsets[u] = offset;
             offset += vertex_edges[u].size();
         }
     }

@@ -43,5 +43,5 @@ setup(
     entry_points={"console_scripts": ["graphvite = graphvite.cmd:main"]},
     zip_safe=False,
     #install_requires=["numpy", "pyyaml", "easydict", "six", "future"],
-    #extras_requires={"app": ["imageio", "scipy", "matplotlib", "torch", "torchvision", "nltk"]}
+    #extras_requires={"app": ["imageio", "psutil", "scipy", "matplotlib", "torch", "torchvision", "nltk"]}
 )

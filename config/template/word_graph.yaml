@@ -1,0 +1,77 @@
+###########################################################
+# Word embedding configuration file
+###########################################################
+
+application:
+  word graph
+
+resource:
+  # List of GPU ids. Default is all GPUs
+  gpus: []
+  # Memory limit for each GPU in bytes. Default is all available memory.
+  gpu_memory_limit: auto
+  # Number of CPU thread per GPU. Default is all CPUs.
+  cpu_per_gpu: auto
+  # Dimension of the embeddings.
+  dim: 128
+
+graph:
+  # Path to corpus file. Each line should be one of the following
+  # [word] [delimiter] [word] [delimiter]... [comment]...
+  # [comment]...
+  # For standard datasets, you can specify them by <[dataset].[split]>.
+  file_name: 
+  # Word pairs with distance <= window as counted as edges. Default is recommended.
+  window: 5
+  # Words with occurrence <= min_count are discarded.
+  min_count: 5
+  # Normalize the adjacency matrix or not. This may influence the performance a little.
+  normalization: false
+  # String of delimiter characters. Change it if your node name contains blank character.
+  delimiters: " \t\r\n"
+  # Prefix of comment strings. Change it if you use comment style other than Python.
+  comment: "#"
+
+build:
+  optimizer:
+    # Optimizer.
+    type: SGD
+    # Learning rate. Default is usually reasonable.
+    lr: 0.025
+    # Weight decay.
+    weight_decay: 0.005
+    # Learning rate schedule, can be "linear" or "constant". Linear is recommended.
+    schedule: linear
+  # Number of partitions. Auto is recommended.
+  num_partition: auto
+  # Number of negative samples per positive sample.
+  # Larger value results in slower training.
+  # The performance may be influenced by num_negative * negative_weight.
+  num_negative: 1
+  # Batch size of samples in CPU-GPU transfer. Default is recommended.
+  batch_size: 100000
+  # Number of batches in a partition block.
+  # Default is recommended, unless it overflows the memory (std::bad_alloc).
+  episode_size: auto
+
+train:
+  # Model, can be LINE.
+  model: LINE
+  # Number of epochs. Default is usually reasonable.
+  num_epoch: 80
+  # Weight of negative samples. Values larger than 10 may cause unstable training.
+  negative_weight: 5
+  # Exponent of degrees in negative sampling. Default is recommended.
+  negative_sample_exponent: 0.75
+  # Augmentation step. Default is recommended.
+  augmentation_step: 1
+  # Length of each random walk. Default is recommended.
+  random_walk_length: 40
+  # Batch size of random walks in samplers. Default is recommended.
+  random_walk_batch_size: 100
+  # Log every n batches.
+  log_frequency: 1000
+
+# Comment out this section if not needed.
+save:
+  file_name: word_graph.pkl

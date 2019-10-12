@@ -1,6 +1,6 @@
 package:
   name: graphvite
-  version: 0.1.0
+  version: 0.2.0
 
 source:
   path: ../..
@@ -40,6 +40,7 @@ requirements:
     - six
     - future
     - imageio
+    - psutil
     - scipy
     - matplotlib
     - pytorch

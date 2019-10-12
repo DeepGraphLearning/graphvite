@@ -30,6 +30,22 @@ Config your conda with the following command, and try installation again.
 
     conda config --add channels conda-forge
 
+Why is my CUDA driver version insufficient for CUDA runtime version?
+--------------------------------------------------------------------
+
+This is because you have installed a GraphVite compiled for some later CUDA version.
+You can check your CUDA version with ``nvcc -V``, and then install the corresponding
+package by
+
+.. code-block:: bash
+
+    conda install -c milagraph graphvite cudatoolkit=x.x
+
+where ``x.x`` is your CUDA version, e.g. 9.2 or 10.0.
+
+Note graphvite does not support CUDA version earlier than 9.2, due to a failure of
+old version ``nvcc``.
+
 Why is there a compilation error for template deduction?
 --------------------------------------------------------
 
@@ -49,3 +65,11 @@ embeddings.
     embeddings = solver.vertex_embeddings
 
 Now the access to ``embeddings`` should be good.
+
+How can I speed up compliation?
+-------------------------------
+
+The compilation can be accelerated by reducing the number of template instantiations.
+You can pass ``-DFAST_COMPILE=True`` to cmake, which will only compile commonly used
+embedding dimensions. You may also comment out unnecessary instantiations in
+``src/graphvite.cu`` for further speed-up.

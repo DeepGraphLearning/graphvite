@@ -2,7 +2,7 @@ Python Interface
 ================
 
 GraphVite provides Python interface for convenient integration with other software.
-To use GraphVite in Python, import these two modules in your script.
+To use GraphVite in Python, import these two modules in our script.
 
     >>> import graphvite as gv
     >>> import graphvite.application as gap
@@ -14,13 +14,13 @@ wrappers of applications, along with their evaluation routines.
 Applications
 ------------
 
-You can invoke a node embedding application with the following lines.
+We can invoke a node embedding application with the following lines.
 
     >>> app = gap.GraphApplication(dim=128)
     >>> app.load(file_name=gv.dataset.blogcatalog.train)
     >>> app.build()
     >>> app.train()
-    >>> app.evaluate("node_classification", file_name=gv.dataset.blogcatalog.label)
+    >>> app.evaluate("node classification", file_name=gv.dataset.blogcatalog.label)
 
 where the arguments of each member function are identical to those in the
 :doc:`configuration files <configuration>`.
@@ -31,8 +31,8 @@ where the arguments of each member function are identical to those in the
 Basic classes
 -------------
 
-The basic classes are very helpful if you need fine-grained manipulation of the
-pipeline. For example, you may train an ensemble of node embedding models on the
+The basic classes are very helpful if we need fine-grained manipulation of the
+pipeline. For example, we may train an ensemble of node embedding models on the
 same graph. First, create a graph and two node embedding solvers.
 
     >>> graph = gv.graph.Graph()
@@ -45,7 +45,7 @@ Then, build the solvers on that graph. This step determines all memory allocatio
     >>> for solver in solvers:
     >>>     solver.build(graph)
 
-Now you can train the solver. The training stage of solvers can be fully paralleled
+Now we can train the solver. The training stage of solvers can be fully paralleled
 with multiple threads, since GraphVite never holds Python GIL inside basic classes.
 
     >>> from multiprocessing.pool import ThreadPool
@@ -72,7 +72,7 @@ prints the vertex embedding of node "1024".
 Logging settings
 ----------------
 
-GraphVite outputs a bunch of messages during stages like training. You can set the
+GraphVite outputs a bunch of messages during stages like training. We can set the
 logging level to dismiss unimportant logs.
 
 The following lines suppress most logs except hyperparameters and evaluation results.

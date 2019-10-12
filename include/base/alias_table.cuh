@@ -51,6 +51,8 @@ public:
     typedef _Float Float;
     typedef _Index Index;
 
+    static const int kThreadPerBlock = 512;
+
     int device_id;
     Index count;
     cudaStream_t stream;
@@ -71,6 +73,12 @@ public:
             alias_table(a.alias_table) {}
 
     AliasTable &operator=(const AliasTable &) = delete;
+
+    /** Reallocate the memory space */
+    void reallocate(Index capacity) {
+        prob_table.reallocate(capacity);
+        alias_table.reallocate(capacity);
+    }
 
     /** Initialize the table with a distribution */
     void build(const std::vector<Float> &_prob_table) {
@@ -133,8 +141,7 @@ public:
 
     /** Free GPU memory */
     void clear() {
-        prob_table.resize(0);
-        alias_table.resize(0);
+        reallocate(0);
     }
 
     /** Generate a sample on CPU / GPU */
@@ -146,8 +153,8 @@ public:
 
     /** Generate a batch of samples on GPU */
     void device_sample(const Memory<double, int> &rand, Memory<Index, int> *result) {
-        int grid_dim = (result->count + 512 - 1) / 512;
-        gpu::Sample<Float, Index><<<grid_dim, 512, 0, stream>>>(*this, rand, *result);
+        int block_per_grid = (result->count + kThreadPerBlock - 1) / kThreadPerBlock;
+        gpu::Sample<Float, Index><<<block_per_grid, kThreadPerBlock, 0, stream>>>(*this, rand, *result);
     }
 
     /**

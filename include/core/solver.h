@@ -31,6 +31,7 @@
 #include <curand.h>
 #include <cuda_runtime.h>
 #include <glog/logging.h>
+#include <pybind11/numpy.h>
 
 #include "base/memory.h"
 #include "base/vector.h"
@@ -41,6 +42,8 @@
 #include "util/gpu.cuh"
 #include "util/debug.h"
 #include "util/time.h"
+
+namespace py = pybind11;
 
 namespace graphvite {
 
@@ -70,11 +73,17 @@ const Protocol kSharedWithPredecessor = 0x10;
  * @tparam _Sampler type of edge sampler
  * @tparam _Worker type of training worker
  *
- * @note To add a new solver, you need to
+ * The solver class is a high-level abstract of all procedures on a family of graph embeddings.
+ * Most interface of the solver class is exposed to Python through pybind11.
+ *
+ * A solver works like a master thread over a bunch of samplers and workers.
+ * It cooperates multiple samplers (CPU) and workers (GPU) for training and prediction over graph embeddings.
+ *
+ * @note To add a new solver class, you need to
  * - derive a template solver class from SolverMixin
- * - implement all virtual functions for that class
- * - add python binding of instantiations of that class in extension.h & extension.cu
- */
+ * - implement all virtual functions for that class in instance/*.cuh
+ * - add python binding of instantiations of that class in bind.h & graphvite.cu
+*/
 template<size_t _dim, class _Float, class _Index, template<class> class _Graph, template<class> class _Sampler,
         template<class> class _Worker>
 class SolverMixin {
@@ -90,6 +99,8 @@ public:
     typedef Vector<dim, Float> Vector;
     typedef typename Sampler::EdgeSample EdgeSample;
     typedef std::function<void(Sampler *, int, int)> SampleFunction;
+
+    static const int kSampleSize = Sampler::kSampleSize;
 
     Graph *graph = nullptr;
     Index num_vertex;
@@ -107,9 +118,19 @@ public:
     Protocol sampler_protocol;
     bool tied_weights;
     std::vector<std::vector<Index>> head_partitions, tail_partitions;
+    Index head_partition_size, tail_partition_size;
     std::vector<std::pair<int, Index>> head_locations, tail_locations;
     AliasTable<Float, size_t> edge_table;
     std::vector<std::vector<std::vector<std::vector<EdgeSample>>>> sample_pools;
+    // <<<<<<<<<<<<<<< predict <<<<<<<<<<<<<<<
+    const std::vector<EdgeSample> *samples;
+    const py::array_t<Index> *array;
+    std::vector<Float> results;
+    std::vector<std::vector<std::vector<EdgeSample>>> predict_pool;
+    std::vector<std::vector<std::vector<size_t>>> sample_indexes;
+    std::vector<std::vector<std::vector<size_t>>> pool_offsets;
+    // >>>>>>>>>>>>>>> predict >>>>>>>>>>>>>>>
+    bool is_train;
     int pool_id = 0;
     std::vector<Sampler *> samplers;
     std::vector<Worker *> workers;
@@ -118,8 +139,8 @@ public:
     Optimizer optimizer;
     int num_worker, num_sampler, num_thread;
     size_t gpu_memory_limit, gpu_memory_cost;
-    volatile std::atomic<int> batch_id;
-    int num_batch;
+    volatile std::atomic<int> batch_id, predict_batch_id;
+    int num_batch, num_predict_batch;
 
 #define USING_SOLVER_MIXIN(type) \
     using type::dim; \
@@ -357,16 +378,6 @@ public:
                 protocols, shapes, sampler_protocol, num_moment, num_partition, num_negative, batch_size);
         CHECK(gpu_memory_cost < gpu_memory_limit)
                 << "Can't satisfy the specified GPU memory limit";
-        if (episode_size == kAuto) {
-            if (all & kGlobal)
-                episode_size = float(num_vertex * kSamplePerVertexWithGlobal) / num_partition / batch_size;
-            else
-                episode_size = float(num_vertex * kSamplePerVertex) / num_partition / batch_size;
-            episode_size = std::max(episode_size, 1);
-            if (num_partition == 1)
-                // for single partition, we don't need to use very small episode size
-                episode_size = std::max(episode_size, kMinEpisodeSample / batch_size);
-        }
 
         // use naive data parallel if there is no partition
         naive_parallel = !(all & (kHeadPartition | kTailPartition));
@@ -377,6 +388,14 @@ public:
         if (!naive_parallel) {
             head_partitions = partition(graph->vertex_weights, num_partition);
             tail_partitions = partition(graph->vertex_weights, num_partition);
+            head_partition_size = 0;
+            tail_partition_size = 0;
+            for (int i = 0; i < num_partition; i++) {
+                if (head_partition_size < head_partitions[i].size())
+                    head_partition_size = head_partitions[i].size();
+                if (tail_partition_size < tail_partitions[i].size())
+                    tail_partition_size = tail_partitions[i].size();
+            }
             head_locations.resize(num_vertex);
             tail_locations.resize(num_vertex);
             for (int i = 0; i < num_partition; i++)
@@ -391,23 +410,59 @@ public:
                 }
         }
 
-        // allocating sample pool is slow
+        for (auto &&worker : workers)
+            worker->build();
+
+        // leave allocation of sample pools last, since it is the most elastic part
         sample_pools.resize(2);
         for (auto &&sample_pool : sample_pools) {
             sample_pool.resize(num_partition);
-            for (auto &&partition_pool : sample_pool) {
+            for (auto &&partition_pool : sample_pool)
                 if (naive_parallel)
                     partition_pool.resize(1);
                 else
                     partition_pool.resize(num_partition);
-                for (auto &&pool : partition_pool)
-                    pool.resize(episode_size * batch_size);
-            }
         }
+        int expected_size = episode_size;
+        if (episode_size == kAuto) {
+            if (all & kGlobal)
+                expected_size = float(num_vertex * kSamplePerVertexWithGlobal) / num_partition / batch_size;
+            else
+                expected_size = float(num_vertex * kSamplePerVertex) / num_partition / batch_size;
+            expected_size = std::max(expected_size, 1);
+            if (num_partition == 1)
+                // for single partition, we don't need to use very small episode size
+                expected_size = std::max(expected_size, kMinEpisodeSample / batch_size);
+        }
+        while (expected_size > 0) {
+            try {
+                for (auto &&sample_pool : sample_pools) {
+                    for (auto &&partition_pool : sample_pool)
+                        for (auto &&pool : partition_pool)
+                            pool.resize(expected_size * batch_size);
+                }
+            } catch (const std::bad_alloc &) {
+                expected_size /= 2;
+                // free memory
+                for (auto &&sample_pool : sample_pools) {
+                    for (auto &&partition_pool : sample_pool)
+                        for (auto &&pool : partition_pool)
+                            std::vector<EdgeSample>().swap(pool);
+                }
+                continue;
+            }
+            break;
+        }
+        if (expected_size == 0)
+            LOG(FATAL) << "Out of memory. Try to reduce the size of your graph or the dimension of your embeddings.";
+        if (episode_size != kAuto)
+            LOG_IF(WARNING, expected_size < episode_size)
+                << "Fail to allocate memory for episode size of " << episode_size
+                << ". Use the maximal possible size instead.";
+        episode_size = expected_size;
+
         for (auto &&sampler : samplers)
             sampler->build();
-        for (auto &&worker : workers)
-            worker->build();
     }
 
     virtual inline std::string name() const {
@@ -520,7 +575,7 @@ public:
     }
 
     /**
-     * @brief Train graph embeddings
+     * @brief Train embeddings
      * @param _model model
      * @param _num_epoch number of epochs, i.e. #positive edges / |E|
      * @param _resume resume training from learned embeddings or not
@@ -554,6 +609,7 @@ public:
             batch_id = 0;
         }
         num_batch = batch_id + num_epoch * num_edge / batch_size;
+        is_train = true;
 
         std::vector<std::thread> sample_threads(num_sampler);
         std::vector<std::thread> worker_threads(num_worker);
@@ -597,12 +653,174 @@ public:
             thread.join();
     }
 
+    /**
+     * @brief Predict logits for samples
+     * @param _samples edge samples
+     */
+    std::vector<Float> predict(const std::vector<EdgeSample> &_samples) {
+        samples = &_samples;
+        is_train = false;
+
+        pool_offsets.resize(num_sampler + 1);
+        for (auto &&sampler_offsets : pool_offsets) {
+            sampler_offsets.resize(num_partition);
+            for (auto &&partition_offsets : sampler_offsets)
+                partition_offsets.resize(num_partition);
+        }
+        predict_pool.resize(num_partition);
+        for (auto &&partition_pool : predict_pool)
+            partition_pool.resize(num_partition);
+        sample_indexes.resize(num_partition);
+        for (auto &&partition_indexes : sample_indexes)
+            partition_indexes.resize(num_partition);
+
+        std::vector<std::thread> sample_threads(num_sampler + num_worker);
+        size_t num_sample = samples->size();
+        size_t work_load = (num_sample + num_sampler - 1) / num_sampler;
+        for (int i = 0; i < num_sampler + num_worker; i++)
+            sample_threads[i] = std::thread(&Sampler::count, samplers[0], work_load * i,
+                                             std::min(work_load * (i + 1), num_sample), i);
+        for (auto &&thread : sample_threads)
+            thread.join();
+
+        for (int i = 0; i < num_sampler; i++)
+            for (int j = 0; j < num_partition; j++)
+                for (int k = 0; k < num_partition; k++)
+                    pool_offsets[i + 1][j][k] += pool_offsets[i][j][k];
+        predict_batch_id = 0;
+        num_predict_batch = 0;
+        size_t all_pool = 0;
+        for (int i = 0; i < num_partition; i++)
+            for (int j = 0; j < num_partition; j++) {
+                size_t this_pool_size = pool_offsets[num_sampler][i][j];
+                all_pool += this_pool_size;
+                predict_pool[i][j].resize(this_pool_size);
+                sample_indexes[i][j].resize(this_pool_size);
+                num_predict_batch += (this_pool_size + batch_size - 1) / batch_size;
+            }
+//        LOG(INFO) << "all pool size = " << all_pool;
+
+//        LOG(INFO) << "start distribute";
+        for (int i = 0; i < num_sampler + num_worker; i++)
+            sample_threads[i] = std::thread(&Sampler::distribute, samplers[0], work_load * i,
+                                             std::min(work_load * (i + 1), num_sample), i);
+        for (auto &&thread : sample_threads)
+            thread.join();
+//        LOG(INFO) << "end distribute";
+
+//        LOG(INFO) << "start predict";
+        results.resize(num_sample);
+        std::vector<std::thread> worker_threads(num_worker);
+        auto schedule = get_schedule();
+        for (auto &&assignment : schedule) {
+            for (int i = 0; i < assignment.size(); i++)
+                worker_threads[i] = std::thread(&Worker::predict, workers[i], assignment[i].first, assignment[i].second);
+            for (int i = 0; i < assignment.size(); i++)
+                worker_threads[i].join();
+        }
+//        LOG(INFO) << "end predict";
+
+        decltype(predict_pool)().swap(predict_pool);
+        decltype(sample_indexes)().swap(sample_indexes);
+        decltype(pool_offsets)().swap(pool_offsets);
+
+        return results;
+    }
+
+    /**
+     * @brief Predict logits for samples
+     * @param _samples ndarray of edge samples, with shape (?, kSampleSize)
+     */
+    py::array_t<Float> predict_numpy(const py::array_t<Index> &_array) {
+        if (_array.ndim() != 2 || _array.shape(1) != kSampleSize) {
+            std::stringstream ss;
+            ss << _array.shape(0);
+            for (int i = 1; i < _array.ndim(); i++)
+                ss << ", " << _array.shape(i);
+            LOG(FATAL) << "Expect an array with shape (?, " << kSampleSize
+                       << "), but shape (" << ss.str() << ") is found";
+        }
+//        LOG(INFO) << "begin predict numpy";
+        array = &_array;
+        is_train = false;
+
+        pool_offsets.resize(num_sampler + 1);
+        for (auto &&sampler_offsets : pool_offsets) {
+            sampler_offsets.resize(num_partition);
+            for (auto &&partition_offsets : sampler_offsets)
+                partition_offsets.resize(num_partition);
+        }
+        predict_pool.resize(num_partition);
+        for (auto &&partition_pool : predict_pool)
+            partition_pool.resize(num_partition);
+        sample_indexes.resize(num_partition);
+        for (auto &&partition_indexes : sample_indexes)
+            partition_indexes.resize(num_partition);
+
+        std::vector<std::thread> sample_threads(num_sampler + num_worker);
+        size_t num_sample = array->shape(0);
+        size_t work_load = (num_sample + num_sampler - 1) / num_sampler;
+//        LOG(INFO) << "begin count";
+        for (int i = 0; i < num_sampler + num_worker; i++)
+            sample_threads[i] = std::thread(&Sampler::count_numpy, samplers[0], work_load * i,
+                                            std::min(work_load * (i + 1), num_sample), i);
+        for (auto &&thread : sample_threads)
+            thread.join();
+//        LOG(INFO) << "end count";
+
+        for (int i = 0; i < num_sampler; i++)
+            for (int j = 0; j < num_partition; j++)
+                for (int k = 0; k < num_partition; k++)
+                    pool_offsets[i + 1][j][k] += pool_offsets[i][j][k];
+        predict_batch_id = 0;
+        num_predict_batch = 0;
+        size_t all_pool = 0;
+        for (int i = 0; i < num_partition; i++)
+            for (int j = 0; j < num_partition; j++) {
+                size_t this_pool_size = pool_offsets[num_sampler][i][j];
+                all_pool += this_pool_size;
+                predict_pool[i][j].resize(this_pool_size);
+                sample_indexes[i][j].resize(this_pool_size);
+                num_predict_batch += (this_pool_size + batch_size - 1) / batch_size;
+            }
+
+//        LOG(INFO) << "begin distribute";
+        for (int i = 0; i < num_sampler + num_worker; i++)
+            sample_threads[i] = std::thread(&Sampler::distribute_numpy, samplers[0], work_load * i,
+                                            std::min(work_load * (i + 1), num_sample), i);
+        for (auto &&thread : sample_threads)
+            thread.join();
+//        LOG(INFO) << "end distribute";
+
+        results.resize(num_sample);
+        std::vector<std::thread> worker_threads(num_worker);
+        auto schedule = get_schedule();
+//        LOG(INFO) << "begin predict kernel";
+        for (auto &&assignment : schedule) {
+            for (int i = 0; i < assignment.size(); i++)
+                worker_threads[i] = std::thread(&Worker::predict, workers[i], assignment[i].first, assignment[i].second);
+            for (int i = 0; i < assignment.size(); i++)
+                worker_threads[i].join();
+        }
+//        LOG(INFO) << "end predict kernel";
+
+        decltype(predict_pool)().swap(predict_pool);
+        decltype(sample_indexes)().swap(sample_indexes);
+        decltype(pool_offsets)().swap(pool_offsets);
+//        LOG(INFO) << "end predict numpy";
+
+        py::array_t<Float> _results(num_sample);
+        memcpy(_results.mutable_data(), results.data(), num_sample * sizeof(Float));
+        return _results;
+    }
+
     /** Free CPU and GPU memory, except the embeddings on CPU */
-    void clear() {
+    virtual void clear() {
         decltype(moments)().swap(moments);
         decltype(head_partitions)().swap(head_partitions);
         decltype(tail_partitions)().swap(tail_partitions);
         decltype(sample_pools)().swap(sample_pools);
+        edge_table.clear();
         for (auto &&sampler : samplers)
             sampler->clear();
         for (auto &&worker : workers)
@@ -621,7 +839,7 @@ public:
      */
     static size_t gpu_memory_demand(const std::vector<Protocol> &protocols, const std::vector<Index> &shapes,
                                     Protocol sampler_protocol = kTailPartition, int num_moment = 0,
-                                    int num_partition = 4, int num_negative = 1, int batch_size = 100000) {
+                                    int num_partition = 4, int num_negative = 1, int batch_size = 10000) {
         auto partition_shapes = shapes;
         int num_embedding = protocols.size();
         Index num_vertex;
@@ -654,6 +872,10 @@ public:
         return demand;
     }
 
+    static size_t cpu_memory_demand() {
+        size_t demand = 0;
+    }
+
 private:
     /**
      * @brief Generate partition for nodes s.t. each partition has similar sum of weights.
@@ -683,9 +905,12 @@ private:
  * @tparam _Solver type of graph embedding solver
  * @tparam _Attributes types of additional edge attributes
  *
- * @note To add a new sampler, you need to
+ * The sampler class is an abstract interface of CPU routines on a family of graph embeddings.
+ * Multiple samplers generate and prepare edge samples in parallel, under the schedule of the solver.
+ *
+ * @note To add a new sampler class, you need to
  * - derive a template sampler class from SamplerMixin
- * - implement all virtual functions for that class
+ * - implement all virtual functions for that class in instance/*.cuh
  * - bind that class to a solver as a template parameter
  */
 template<class _Solver, class ..._Attributes>
@@ -699,12 +924,15 @@ public:
     typedef std::tuple<Index, Index, _Attributes...> EdgeSample;
     typedef typename Solver::Graph::Edge Edge;
 
+    static const int kSampleSize = sizeof(EdgeSample) / sizeof(Index);
+    static_assert(sizeof(EdgeSample) % sizeof(Index) == 0, "sizeof(EdgeSample) must be a multiplier of sizeof(Index)");
+
     Solver *solver;
     int device_id;
     cudaStream_t stream;
     Memory<double, int> random;
     curandGenerator_t generator;
-    int pool_size;
+    int num_partition, pool_size;
 
 #define USING_SAMPLER_MIXIN(type) \
     using typename type::Solver; \
@@ -717,6 +945,7 @@ public:
     using type::stream; \
     using type::random; \
     using type::generator; \
+    using type::num_partition; \
     using type::pool_size
 
     /**
@@ -744,14 +973,15 @@ public:
     void build() {
         CUDA_CHECK(cudaSetDevice(device_id));
 
-        pool_size = solver->sample_pools[0][0][0].size();
+        num_partition = solver->num_partition;
+        pool_size = solver->episode_size * solver->batch_size;
         random.resize(kRandBatchSize);
         CURAND_CHECK(curandGenerateUniformDouble(generator, random.device_ptr, kRandBatchSize));
     }
 
     /** Free GPU memory */
     void clear() {
-        random.resize(0);
+        random.reallocate(0);
     }
 
     /** Sample edges for naive parallel. This function can be parallelized. */
@@ -766,7 +996,7 @@ public:
         std::vector<Index> heads(solver->sample_batch_size);
         std::vector<Index> tails(solver->sample_batch_size);
         std::vector<Attributes> attributes(solver->sample_batch_size);
-        while (partition_id < solver->num_partition) {
+        while (partition_id < num_partition) {
             for (int i = 0; i < solver->sample_batch_size; i++) {
                 if (rand_id > kRandBatchSize - 2) {
                     random.to_host();
@@ -783,7 +1013,7 @@ public:
                 auto &pool = sample_pool[partition_id][0];
                 pool[offset] = std::tuple_cat(std::tie(heads[i], tails[i]), attributes[i]);
                 if (++offset == end) {
-                    if (++partition_id == solver->num_partition)
+                    if (++partition_id == num_partition)
                         return;
                     offset = start;
                 }
@@ -799,14 +1029,14 @@ public:
         CURAND_CHECK(curandGenerateUniformDouble(generator, random.device_ptr, kRandBatchSize));
 
         auto &sample_pool = solver->sample_pools[solver->pool_id ^ 1];
-        std::vector<std::vector<int>> offsets(solver->num_partition);
+        std::vector<std::vector<int>> offsets(num_partition);
         for (auto &&partition_offsets : offsets)
-            partition_offsets.resize(solver->num_partition, start);
+            partition_offsets.resize(num_partition, start);
         int num_complete = 0, rand_id = 0;
         std::vector<std::pair<int, Index>> heads(solver->sample_batch_size);
         std::vector<std::pair<int, Index>> tails(solver->sample_batch_size);
         std::vector<Attributes> attributes(solver->sample_batch_size);
-        while (num_complete < solver->num_partition * solver->num_partition) {
+        while (num_complete < num_partition * num_partition) {
             for (int i = 0; i < solver->sample_batch_size; i++) {
                 if (rand_id > kRandBatchSize - 2) {
                     random.to_host();
@@ -837,6 +1067,89 @@ public:
         }
     }
 
+    /** Count edges for each sample block. This function can be parallelized. */
+    void count(size_t start, size_t end, int id) {
+        auto &offsets = solver->pool_offsets[id + 1];
+        for (size_t i = start; i < end; i++) {
+            Index head_global_id = std::get<0>((*solver->samples)[i]);
+            Index tail_global_id = std::get<1>((*solver->samples)[i]);
+            int head_partition_id = solver->head_locations[head_global_id].first;
+            int tail_partition_id = solver->tail_locations[tail_global_id].first;
+            offsets[head_partition_id][tail_partition_id]++;
+        }
+    }
+
+    /** Count edges for each sample block. This function can be parallelized. */
+    void count_numpy(size_t start, size_t end, int id) {
+        auto &offsets = solver->pool_offsets[id + 1];
+        auto array = solver->array->unchecked();
+        for (size_t i = start; i < end; i++) {
+            Index head_global_id = array(i, 0);
+            Index tail_global_id = array(i, 1);
+            int head_partition_id = solver->head_locations[head_global_id].first;
+            int tail_partition_id = solver->tail_locations[tail_global_id].first;
+            offsets[head_partition_id][tail_partition_id]++;
+        }
+    }
+
+    /** Distribute edges to the sample pool. This function can be parallelized. */
+    void distribute(size_t start, size_t end, int id) {
+        auto &offsets = solver->pool_offsets[id];
+
+        for (size_t i = start; i < end; i++) {
+            Index head_global_id = std::get<0>((*solver->samples)[i]);
+            Index tail_global_id = std::get<1>((*solver->samples)[i]);
+            std::pair<int, Index> head = solver->head_locations[head_global_id];
+            std::pair<int, Index> tail = solver->tail_locations[tail_global_id];
+            int head_partition_id = head.first;
+            int tail_partition_id = tail.first;
+            Index head_local_id = head.second;
+            Index tail_local_id = tail.second;
+
+            auto &pool = solver->predict_pool[head_partition_id][tail_partition_id];
+            auto &indexes = solver->sample_indexes[head_partition_id][tail_partition_id];
+            size_t &offset = offsets[head_partition_id][tail_partition_id];
+            EdgeSample sample = (*solver->samples)[i];
+            std::get<0>(sample) = head_local_id;
+            std::get<1>(sample) = tail_local_id;
+
+            pool[offset] = sample;
+            indexes[offset] = i;
+            offset++;
+        }
+    }
+
+    /** Distribute edges to the sample pool. This function can be parallelized. */
+    void distribute_numpy(size_t start, size_t end, int id) {
+        auto &offsets = solver->pool_offsets[id];
+        auto array = solver->array->unchecked();
+
+        for (size_t i = start; i < end; i++) {
+            Index head_global_id = array(i, 0);
+            Index tail_global_id = array(i, 1);
+            std::pair<int, Index> head = solver->head_locations[head_global_id];
+            std::pair<int, Index> tail = solver->tail_locations[tail_global_id];
+            int head_partition_id = head.first;
+            int tail_partition_id = tail.first;
+            Index head_local_id = head.second;
+            Index tail_local_id = tail.second;
+
+            auto &pool = solver->predict_pool[head_partition_id][tail_partition_id];
+            auto &indexes = solver->sample_indexes[head_partition_id][tail_partition_id];
+            size_t &offset = offsets[head_partition_id][tail_partition_id];
+            EdgeSample sample;
+            Index *_sample = reinterpret_cast<Index *>(&sample);
+            for (int j = 0; j < kSampleSize; j++)
+                _sample[j] = array(i, kSampleSize - j - 1);
+            std::get<0>(sample) = head_local_id;
+            std::get<1>(sample) = tail_local_id;
+
+            pool[offset] = sample;
+            indexes[offset] = i;
+            offset++;
+        }
+    }
+
     /** @return GPU memory cost */
     static size_t gpu_memory_demand() {
         size_t demand = 0;
@@ -846,13 +1159,26 @@ public:
 };
 
 /**
- * General interface for training workers
+ * General interface for workers
  * @tparam _Solver type of graph embedding solver
  *
- * @note To add a new worker, you need to
+ * The worker class is an abstract interface of GPU routines on a family of graph embeddings.
+ * Multiple workers compute and update embeddings in parallel, under the schedule of the solver.
+ *
+ * The computation routine and the model are implemented separately to facilitate development and maintenance.
+ * They are binded at compile time to ensure minimal run-time cost.
+ *
+ * Generally, the routine and the model should contain model-agnostic and model-specific computation respectively.
+ *
+ * @note To add a new worker class, you need to
  * - derive a template worker class from WorkerMixin
- * - implement all virtual functions for that class
+ * - implement all virtual functions for that class in instance/*.cuh
  * - bind that class to a solver as a template parameter
+ *
+ * @note To add a new routine or model, you may need to
+ * - implement a GPU kernel for the routine in instance/gpu/*.cuh
+ * - implement a template model class in instance/model/*.cuh
+ * - bind the GPU kernel and the model class in train_dispatch() or predict_dispatch()
  */
 template<class _Solver>
 class WorkerMixin {
@@ -863,8 +1189,7 @@ public:
     typedef typename Solver::Vector Vector;
     typedef typename Solver::EdgeSample EdgeSample;
 
-    static const int sample_size = sizeof(EdgeSample) / sizeof(Index);
-    static_assert(sizeof(EdgeSample) % sizeof(Index) == 0, "sizeof(EdgeSample) must be a multiplier of sizeof(Index)");
+    static const int kSampleSize = Solver::kSampleSize;
 
     Solver *solver;
     int device_id;
@@ -879,9 +1204,7 @@ public:
     Protocol sampler_protocol;
     AliasTable<Float, Index> negative_sampler;
     Memory<Index, int> batch, negative_batch;
-#ifdef USE_LOSS
-    Memory<Float, int> loss;
-#endif
+    Memory<Float, int> logits, loss;
     Memory<double, int> random;
     curandGenerator_t generator;
     int num_moment;
@@ -904,6 +1227,8 @@ public:
     using type::negative_sampler; \
     using type::batch; \
     using type::negative_batch; \
+    using type::logits; \
+    using type::loss; \
     using type::batch_size; \
     using type::embeddings; \
     using type::moments; \
@@ -918,11 +1243,7 @@ public:
      */
     WorkerMixin(Solver *_solver, int _device_id) :
             solver(_solver), device_id(_device_id), negative_sampler(device_id),
-            batch(device_id), negative_batch(device_id),
-#ifdef USE_LOSS
-            loss(device_id),
-#endif
-            random(device_id) {
+            batch(device_id), negative_batch(device_id), logits(device_id), loss(device_id), random(device_id) {
         CUDA_CHECK(cudaSetDevice(device_id));
 
         CUDA_CHECK(cudaStreamCreate(&work_stream));
@@ -931,9 +1252,8 @@ public:
         // work stream
         batch.stream = work_stream;
         negative_batch.stream = work_stream;
-#ifdef USE_LOSS
+        logits.stream = work_stream;
         loss.stream = work_stream;
-#endif
         // sample stream
         negative_sampler.stream = sample_stream;
         random.stream = sample_stream;
@@ -947,8 +1267,11 @@ public:
 
     WorkerMixin &operator=(const WorkerMixin &) = delete;
 
-    /** Should call the corresponding GPU kernel */
-    virtual bool kernel_dispatch() = 0;
+    /** Should call the corresponding training kernel */
+    virtual bool train_dispatch() = 0;
+
+    /** Should call the corresponding prediction kernel */
+    virtual bool predict_dispatch() = 0;
 
     /** Build the alias table for negative sampling */
     virtual void build_negative_sampler() {
@@ -981,18 +1304,37 @@ public:
         gradients.resize(num_embedding);
         moments.resize(num_embedding);
         for (int i = 0; i < num_embedding; i++) {
+            Protocol protocol = protocols[i];
+            Index size = solver->embeddings[i]->size();
+            if (protocol & kHeadPartition)
+                size = solver->head_partition_size;
+            if (protocol & kTailPartition)
+                size = solver->tail_partition_size;
+            if (protocol & kSharedWithPredecessor && solver->num_partition == 1)
+                size = 0;
             embeddings[i] = std::make_shared<Memory<Vector, Index>>(device_id, 0, work_stream);
-            gradients[i] = std::make_shared<Memory<Vector, Index>>(device_id, 0, work_stream);
+            embeddings[i]->reallocate(size);
+            gradients[i] = std::make_shared<Memory<Vector, Index>>(-1, 0, work_stream);
+            if (!(protocol & kInPlace))
+                gradients[i]->reallocate(size);
             moments[i] = std::make_shared<std::vector<Memory<Vector, Index>>>();
-            for (int j = 0; j < num_moment; j++)
+            for (int j = 0; j < num_moment; j++) {
                 moments[i]->push_back(Memory<Vector, Index>(device_id, 0, work_stream));
+                (*moments[i])[j].reallocate(size);
+            }
         }
+        Index size = 0;
+        if (sampler_protocol & kHeadPartition)
+            size += solver->head_partition_size;
+        if (sampler_protocol & kTailPartition)
+            size += solver->tail_partition_size;
+        if (sampler_protocol & kGlobal)
+            size += solver->num_vertex;
+        negative_sampler.reallocate(size);
 
-        batch.resize(batch_size * sample_size);
+        batch.resize(batch_size * kSampleSize);
         negative_batch.resize(batch_size * num_negative);
-#ifdef USE_LOSS
         loss.resize(batch_size);
-#endif
         random.resize(batch_size * num_negative * 2);
 
         head_partition_id = -1;
@@ -1004,21 +1346,23 @@ public:
         embeddings.clear();
         gradients.clear();
         moments.clear();
-        batch.resize(0);
-        negative_batch.resize(0);
-#ifdef USE_LOSS
-        loss.resize(0);
-#endif
-        random.resize(0);
+        batch.reallocate(0);
+        negative_batch.reallocate(0);
+        loss.reallocate(0);
+        random.reallocate(0);
         negative_sampler.clear();
     }
 
-    /** Load an embedding matrix to GPU, along with its gradients and moment statistics */
-    void load_partition_one(int id) {
+    /**
+     * @brief Load an embedding matrix and its moment matrices to GPU cache
+     * @param id id of embedding matrix
+     *
+     * The actual operation depends on the protocol. It is safe to call this function multiple times.
+     */
+    void load_embedding(int id) {
         Protocol protocol = protocols[id];
         if ((protocol & kSharedWithPredecessor) && ((protocol & kGlobal) || head_partition_id == tail_partition_id)) {
             embeddings[id] = embeddings[id - 1];
-            gradients[id] = gradients[id - 1];
             moments[id] = moments[id - 1];
             return;
         }
@@ -1043,20 +1387,24 @@ public:
 
         embedding.gather(global_embedding, *mapping);
         embedding.to_device_async();
+
         // only load partitioned moments, or global moments if uninitialized
-        if (!(protocol & kGlobal) || (num_moment && moment[0].count == 0))
-            for (int i = 0; i < num_moment; i++) {
-                moment[i].gather(global_moment[i], *mapping);
-                moment[i].to_device_async();
+        if (solver->is_train)
+            if (!(protocol & kGlobal) || (num_moment && moment[0].count == 0)) {
+                for (int i = 0; i < num_moment; i++) {
+                    moment[i].gather(global_moment[i], *mapping);
+                    moment[i].to_device_async();
+                }
             }
-        if (!(protocol & kInPlace)) {
-            gradient.fill(0, embedding.count);
-            gradient.to_device_async();
-        }
     }
 
-    /** Write back an embedding matrix from GPU, along with its gradients and moment statistics */
-    void write_back_one(int id) {
+    /**
+     * @brief Write back an embedding matrix and its moment matrices from GPU cache
+     * @param id id of embedding matrix
+     *
+     * The actual operation depends on the protocol. It is safe to call this function multiple times.
+     */
+    void write_embedding(int id) {
         Protocol protocol = protocols[id];
         if (id > 0 && embeddings[id] == embeddings[id - 1])
             return;
@@ -1077,13 +1425,15 @@ public:
             embedding.scatter(global_embedding, *mapping);
         }
         else {
-            gradient.to_host();
-            for (Index i = 0; i < gradient.count; i++)
-                gradient[i] /= solver->num_worker;
+            gradient.copy(embedding);
+            embedding.to_host();
+            for (Index i = 0; i < embedding.count; i++)
+                gradient[i] -= embedding[i];
             gradient.scatter_sub(global_embedding, *mapping);
         }
+
         // only write back partitioned moments
-        if (!(protocol & kGlobal))
+        if (solver->is_train && !(protocol & kGlobal))
             for (int i = 0; i < num_moment; i++) {
                 moment[i].to_host();
                 moment[i].scatter(global_moment[i], *mapping);
@@ -1091,7 +1441,7 @@ public:
     }
 
     /**
-     * @brief Load a partition of the sample pool. Update the cache automatically
+     * @brief Load a partition of the sample pool. Update the cache automatically.
      * @param _head_partition_id id of head partition
      * @param _tail_partition_id id of tail partition
      */
@@ -1106,7 +1456,6 @@ public:
                     // check swap hit
                     if (head_partition_id == _tail_partition_id && tail_partition_id == _head_partition_id) {
                         embeddings[i].swap(embeddings[i - 1]);
-                        gradients[i].swap(gradients[i - 1]);
                         moments[i].swap(moments[i - 1]);
                         hit[i] = true;
                         hit[i - 1] = true;
@@ -1119,9 +1468,11 @@ public:
                     hit[i] = hit[i] || ((protocol & kTailPartition) && tail_partition_id == _tail_partition_id);
                 }
             }
-            for (int i = 0; i < num_embedding; i++)
-                if (!hit[i])
-                    write_back_one(i);
+            // we don't need to write back during prediction
+            if (solver->is_train)
+                for (int i = 0; i < num_embedding; i++)
+                    if (!hit[i])
+                        write_embedding(i);
         }
         bool sampler_hit = (sampler_protocol & kGlobal) && !cold_cache;
         sampler_hit = sampler_hit || ((sampler_protocol & kHeadPartition) && (sampler_protocol & kTailPartition)
@@ -1132,7 +1483,7 @@ public:
         sampler_hit = sampler_hit || ((sampler_protocol & (kHeadPartition | kTailPartition)) == kTailPartition
                                       && tail_partition_id == _tail_partition_id);
 
-        // load cache
+        // load partition mappings
         if (head_partition_id != _head_partition_id) {
             head_partition_id = _head_partition_id;
             if (!solver->naive_parallel) {
@@ -1153,20 +1504,20 @@ public:
         }
         for (int i = 0; i < num_embedding; i++)
             if (!hit[i])
-                load_partition_one(i);
+                load_embedding(i);
     }
 
-    /** Write back all cache */
+    /** Write back all embeddings and their moment matrices from GPU cache */
     void write_back() {
         bool cold_cache = head_partition_id == -1 || tail_partition_id == -1;
         if (cold_cache)
             return;
         for (int i = 0; i < num_embedding; i++)
-            write_back_one(i);
+            write_embedding(i);
     }
 
     /**
-     * @brief Train embeddings with samples in the partition
+     * @brief Train embeddings with samples in the sample block
      * @param _head_partition_id id of head partition
      * @param _tail_partition_id id of tail partition
      */
@@ -1178,14 +1529,14 @@ public:
         log_frequency = solver->log_frequency;
         for (int i = 0; i < solver->positive_reuse; i++)
             for (int j = 0; j < solver->episode_size; j++) {
-                memcpy(batch.host_ptr, &samples[j * batch_size], batch_size * sample_size * sizeof(Index));
+                batch.copy(&samples[j * batch_size], batch_size * kSampleSize);
                 train_batch(solver->batch_id++);
             }
     }
 
     /** Train a single batch */
     virtual void train_batch(int batch_id) {
-        Timer batch_timer("Batch", log_frequency);
+        Timer batch_timer("Train Batch", log_frequency);
         if (batch_id % log_frequency == 0)
             LOG(INFO) << "Batch id: " << batch_id << " / " << solver->num_batch;
         batch.to_device_async();
@@ -1200,7 +1551,6 @@ public:
             }
             CUDA_CHECK(cudaStreamSynchronize(sample_stream));
         }
-#ifdef USE_LOSS
         // Loss (last batch)
         if (batch_id % log_frequency == 0){
             Timer timer("Loss", log_frequency);
@@ -1210,13 +1560,51 @@ public:
                 batch_loss += loss[i];
             LOG(INFO) << "loss = " << batch_loss / batch_size;
         }
-#endif
         // Train
         {
-            Timer timer("Train", log_frequency);
+            Timer timer("Train Kernel", log_frequency);
             optimizer.apply_schedule(batch_id, solver->num_batch);
-            CHECK(kernel_dispatch())
-                    << "Can't find a kernel implementation of `" << solver->model << " with " << optimizer.type;
+            CHECK(train_dispatch())
+                    << "Can't find a training kernel for `" << solver->model << "` with " << optimizer.type;
+        }
+    }
+
+    /**
+     * @brief Predict on samples in the sample block
+     * @param _head_partition_id id of head partition
+     * @param _tail_partition_id id of tail partition
+     */
+    virtual void predict(int _head_partition_id, int _tail_partition_id) {
+        CUDA_CHECK(cudaSetDevice(device_id));
+        load_partition(_head_partition_id, _tail_partition_id);
+
+        auto &samples = solver->predict_pool[head_partition_id][tail_partition_id];
+        auto &indexes = solver->sample_indexes[head_partition_id][tail_partition_id];
+        log_frequency = solver->log_frequency;
+        size_t num_sample = samples.size();
+        int num_batch = (num_sample + batch_size - 1) / batch_size;
+        for (size_t i = 0; i < num_batch; i++) {
+            int actual_size = std::min(size_t(batch_size), num_sample - i * batch_size);
+            batch.copy(&samples[i * batch_size], actual_size * kSampleSize);
+            logits.resize(actual_size);
+            predict_batch(solver->predict_batch_id++);
+            for (int j = 0; j < actual_size; j++) {
+                size_t index = indexes[i * batch_size + j];
+                solver->results[index] = logits[j];
+            }
+        }
+        logits.reallocate(0);
+    }
+
+    /** Predict a single batch */
+    virtual void predict_batch(int batch_id) {
+        Timer batch_timer("Predict Batch", log_frequency);
+        batch.to_device_async();
+        // Predict
+        {
+            Timer timer("Predict Kernel", log_frequency);
+            CHECK(predict_dispatch()) << "Can't find a prediction kernel for `" << solver->model << "`";
+            logits.to_host();
         }
     }
 
@@ -1237,14 +1625,10 @@ public:
         for (int i = 0; i < num_embedding; i++) {
             Protocol protocol = protocols[i];
             demand += Memory<Vector, Index>::gpu_memory_demand(shapes[i]) * (num_moment + 1);
-            if (!(protocol & kInPlace))
-                demand += Memory<Vector, Index>::gpu_memory_demand(shapes[i]);
         }
-        demand += decltype(batch)::gpu_memory_demand(batch_size * sample_size);
+        demand += decltype(batch)::gpu_memory_demand(batch_size * kSampleSize);
         demand += decltype(negative_batch)::gpu_memory_demand(batch_size * num_negative);
-#ifdef USE_LOSS
         demand += decltype(loss)::gpu_memory_demand(batch_size);
-#endif
         demand += decltype(random)::gpu_memory_demand(batch_size * num_negative * 2);
         demand += decltype(negative_sampler)::gpu_memory_demand(sampler_size);
         return demand;

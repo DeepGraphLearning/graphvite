@@ -1,6 +1,6 @@
 package:
   name: graphvite-mini
-  version: 0.1.0
+  version: 0.2.0
 
 source:
   path: ../..
@@ -39,6 +39,7 @@ requirements:
     - easydict
     - six
     - future
+    - psutil
 
 build:
   string:

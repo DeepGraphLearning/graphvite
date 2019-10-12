@@ -23,6 +23,7 @@
 
 #include "core/graph.h"
 #include "core/solver.h"
+#include "model/graph.h"
 #include "gpu/graph.cuh"
 
 /**
@@ -280,9 +281,9 @@ public:
         CURAND_CHECK(curandGenerateUniformDouble(generator, random.device_ptr, kRandBatchSize));
 
         auto &sample_pool = solver->sample_pools[solver->pool_id ^ 1];
-        std::vector<std::vector<int>> offsets(solver->num_partition);
+        std::vector<std::vector<int>> offsets(num_partition);
         for (auto &&partition_offsets : offsets)
-            partition_offsets.resize(solver->num_partition, start);
+            partition_offsets.resize(num_partition, start);
         std::vector<std::vector<std::pair<int, Index>>> head_chains(solver->random_walk_batch_size);
         std::vector<std::vector<std::pair<int, Index>>> tail_chains(solver->random_walk_batch_size);
         for (auto &&head_chain : head_chains)
@@ -291,7 +292,7 @@ public:
             tail_chain.resize(solver->random_walk_length + 1);
         std::vector<int> sample_lengths(solver->random_walk_batch_size);
         int num_complete = 0, rand_id = 0;
-        while (num_complete < solver->num_partition * solver->num_partition) {
+        while (num_complete < num_partition * num_partition) {
             for (int i = 0; i < solver->random_walk_batch_size; i++) {
                 if (rand_id > kRandBatchSize - solver->random_walk_length * 2) {
                     random.to_host();
@@ -358,9 +359,9 @@ public:
         CURAND_CHECK(curandGenerateUniformDouble(generator, random.device_ptr, kRandBatchSize));
 
         auto &sample_pool = solver->sample_pools[solver->pool_id ^ 1];
-        std::vector<std::vector<int>> offsets(solver->num_partition);
+        std::vector<std::vector<int>> offsets(num_partition);
         for (auto &&partition_offsets : offsets)
-            partition_offsets.resize(solver->num_partition, start);
+            partition_offsets.resize(num_partition, start);
         std::vector<std::vector<std::pair<int, Index>>> head_chains(solver->random_walk_batch_size);
         std::vector<std::vector<std::pair<int, Index>>> tail_chains(solver->random_walk_batch_size);
         for (auto &&head_chain : head_chains)
@@ -369,7 +370,7 @@ public:
             tail_chain.resize(solver->random_walk_length + 1);
         std::vector<int> sample_lengths(solver->random_walk_batch_size);
         int num_complete = 0, rand_id = 0;
-        while (num_complete < solver->num_partition * solver->num_partition) {
+        while (num_complete < num_partition * num_partition) {
             for (int i = 0; i < solver->random_walk_batch_size; i++) {
                 if (rand_id > kRandBatchSize - solver->random_walk_length * 2) {
                     random.to_host();
@@ -434,103 +435,117 @@ public:
     typedef GraphSolver<Solver::dim, Float, Index> GraphSolver;
 
     /**
-     * Call the corresponding GPU kernel
+     * Call the corresponding GPU kernel for training
      * (DeepWalk, LINE, node2vec) * (SGD, Momentum, AdaGrad, RMSprop, Adam)
      */
-    bool kernel_dispatch() override {
+    bool train_dispatch() override {
         using namespace gpu;
         GraphSolver *solver = reinterpret_cast<GraphSolver *>(this->solver);
 
         switch (num_moment) {
             case 0: {
-                decltype(&line::train<Vector, Index, kSGD>) train = nullptr;
+                decltype(&graph::train<Vector, Index, DeepWalk, kSGD>) train = nullptr;
                 if (solver->model == "DeepWalk") {
                     if (optimizer.type == "SGD")
-                        train = &deepwalk::train<Vector, Index, kSGD>;
+                        train = &graph::train<Vector, Index, DeepWalk, kSGD>;
                 }
                 if (solver->model == "LINE") {
                     if (optimizer.type == "SGD")
-                        train = &line::train<Vector, Index, kSGD>;
+                        train = &graph::train<Vector, Index, LINE, kSGD>;
                 }
                 if (solver->model == "node2vec") {
                     if (optimizer.type == "SGD")
-                        train = &node2vec::train<Vector, Index, kSGD>;
+                        train = &graph::train<Vector, Index, Node2Vec, kSGD>;
                 }
                 if (train) {
-                    train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
-                            (*embeddings[0], *embeddings[1],
-                                    batch, negative_batch, optimizer, solver->negative_weight
-#ifdef USE_LOSS
-                            , this->loss
-#endif
+                    train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>(
+                            *embeddings[0], *embeddings[1],
+                                    batch, negative_batch, loss, optimizer, solver->negative_weight
                     );
                     return true;
                 }
             }
             case 1: {
-                decltype(&line::train_1_moment<Vector, Index, kMomentum>) train = nullptr;
+                decltype(&graph::train_1_moment<Vector, Index, DeepWalk, kMomentum>) train = nullptr;
                 if (solver->model == "DeepWalk") {
                     if (optimizer.type == "Momentum")
-                        train = &deepwalk::train_1_moment<Vector, Index, kMomentum>;
+                        train = &graph::train_1_moment<Vector, Index, DeepWalk, kMomentum>;
                     if (optimizer.type == "AdaGrad")
-                        train = &deepwalk::train_1_moment<Vector, Index, kAdaGrad>;
+                        train = &graph::train_1_moment<Vector, Index, DeepWalk, kAdaGrad>;
                     if (optimizer.type == "RMSprop")
-                        train = &deepwalk::train_1_moment<Vector, Index, kRMSprop>;
+                        train = &graph::train_1_moment<Vector, Index, DeepWalk, kRMSprop>;
                 }
                 if (solver->model == "LINE") {
                     if (optimizer.type == "Momentum")
-                        train = &line::train_1_moment<Vector, Index, kMomentum>;
+                        train = &graph::train_1_moment<Vector, Index, LINE, kMomentum>;
                     if (optimizer.type == "AdaGrad")
-                        train = &line::train_1_moment<Vector, Index, kAdaGrad>;
+                        train = &graph::train_1_moment<Vector, Index, LINE, kAdaGrad>;
                     if (optimizer.type == "RMSprop")
-                        train = &line::train_1_moment<Vector, Index, kRMSprop>;
+                        train = &graph::train_1_moment<Vector, Index, LINE, kRMSprop>;
                 }
                 if (solver->model == "node2vec") {
                     if (optimizer.type == "Momentum")
-                        train = &node2vec::train_1_moment<Vector, Index, kMomentum>;
+                        train = &graph::train_1_moment<Vector, Index, Node2Vec, kMomentum>;
                     if (optimizer.type == "AdaGrad")
-                        train = &node2vec::train_1_moment<Vector, Index, kAdaGrad>;
+                        train = &graph::train_1_moment<Vector, Index, Node2Vec, kAdaGrad>;
                     if (optimizer.type == "RMSprop")
-                        train = &node2vec::train_1_moment<Vector, Index, kRMSprop>;
+                        train = &graph::train_1_moment<Vector, Index, Node2Vec, kRMSprop>;
                 }
                 if (train) {
-                    train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
-                            (*embeddings[0], *embeddings[1],
+                    train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>(
+                            *embeddings[0], *embeddings[1],
                                     (*moments[0])[0], (*moments[1])[0],
-                                    batch, negative_batch, optimizer, solver->negative_weight
-#ifdef USE_LOSS
-                            , this->loss
-#endif
+                                    batch, negative_batch, loss, optimizer, solver->negative_weight
                     );
                     return true;
                 }
             }
             case 2: {
-                decltype(&line::train_2_moment<Vector, Index, kAdam>) train = nullptr;
+                decltype(&graph::train_2_moment<Vector, Index, DeepWalk, kAdam>) train = nullptr;
                 if (solver->model == "DeepWalk") {
                     if (optimizer.type == "Adam")
-                        train = &deepwalk::train_2_moment<Vector, Index, kAdam>;
+                        train = &graph::train_2_moment<Vector, Index, DeepWalk, kAdam>;
                 }
                 if (solver->model == "LINE") {
                     if (optimizer.type == "Adam")
-                        train = &line::train_2_moment<Vector, Index, kAdam>;
+                        train = &graph::train_2_moment<Vector, Index, LINE, kAdam>;
                 }
                 if (solver->model == "node2vec") {
                     if (optimizer.type == "Adam")
-                        train = &node2vec::train_2_moment<Vector, Index, kAdam>;
+                        train = &graph::train_2_moment<Vector, Index, Node2Vec, kAdam>;
                 }
                 if (train) {
-                    train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
-                            (*embeddings[0], *embeddings[1],
+                    train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>(
+                            *embeddings[0], *embeddings[1],
                                     (*moments[0])[0], (*moments[1])[0], (*moments[0])[1], (*moments[1])[1],
-                                    batch, negative_batch, optimizer, solver->negative_weight
-#ifdef USE_LOSS
-                            , this->loss
-#endif
+                                    batch, negative_batch, loss, optimizer, solver->negative_weight
                     );
                     return true;
                 }
             }
+        }
+        return false;
+    }
+
+    /**
+     * Call the corresponding GPU kernel for prediction
+     * (DeepWalk, LINE, node2vec)
+     */
+    bool predict_dispatch() override {
+        using namespace gpu;
+        GraphSolver *solver = reinterpret_cast<GraphSolver *>(this->solver);
+
+        decltype(&graph::predict<Vector, Index, DeepWalk>) predict = nullptr;
+        if (solver->model == "DeepWalk")
+            predict = &graph::predict<Vector, Index, DeepWalk>;
+        if (solver->model == "LINE")
+            predict = &graph::predict<Vector, Index, LINE>;
+        if (solver->model == "node2vec")
+            predict = &graph::predict<Vector, Index, Node2Vec>;
+        if (predict) {
+            predict<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
+                    (*embeddings[0], *embeddings[1], batch, logits);
+            return true;
         }
         return false;
     }
@@ -759,6 +774,13 @@ public:
             fprintf(fout, "\n");
         }
         fclose(fout);
+    }
+
+    /** Free CPU and GPU memory, except the embeddings on CPU */
+    void clear() override {
+        Base::clear();
+        decltype(vertex_edge_tables)().swap(vertex_edge_tables);
+        decltype(edge_edge_tables)().swap(edge_edge_tables);
     }
 };
 

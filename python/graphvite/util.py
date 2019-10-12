@@ -19,8 +19,11 @@ from __future__ import print_function, absolute_import
 
 import os
 import logging
+import tempfile
 from time import time
 from functools import wraps
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +50,20 @@ def recursive_map(obj, function):
         return function(obj)
 
 
+def assert_in(candidates, **kwargs):
+
+    def readable_list(iterable):
+        iterable = ["`%s`" % x for x in iterable]
+        s = ", ".join(iterable[:-1])
+        if s:
+            s += " and "
+        s += iterable[-1]
+        return s
+
+    for key, value in kwargs.items():
+        assert value in candidates, \
+            "Unknown %s `%s`, candidates are %s" % (key, value, readable_list(candidates))
+
 class chdir(object):
     """
     Context manager for working directory.
@@ -63,6 +80,39 @@ class chdir(object):
 
     def __exit__(self, *args):
         os.chdir(self.old_dir)
+
+
+class SharedNDArray(object):
+    """
+    Shared numpy ndarray with serialization interface.
+    This class can be used as a drop-in replacement for arguments in multiprocessing.
+
+    Parameters:
+        array (array-like): input data
+    """
+    def __init__(self, array):
+        array = np.asarray(array)
+        self.dtype = array.dtype
+        self.shape = array.shape
+        self.file = tempfile.NamedTemporaryFile()
+        self.buffer = np.memmap(self.file, dtype=self.dtype, shape=self.shape)
+        self.buffer[:] = array
+
+    def __getattr__(self, key):
+        if key in self.__dict__:
+            return self.__dict__[key]
+        else:
+            return getattr(self.buffer, key)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["file"]
+        state["buffer"] = self.buffer.filename
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.buffer = np.memmap(self.buffer, dtype=self.dtype, shape=self.shape)
 
 
 class Monitor(object):
@@ -88,6 +138,15 @@ class Monitor(object):
             return "%s.%s.%s" % (instance.__module__, instance.__class__.__name__, function.__name__)
 
     def time(self, function):
+        """
+        Monitor the run time of a function.
+
+        Parameters:
+            function (function): function to monitor
+
+        Returns:
+            function: wrapped function
+        """
         @wraps(function)
         def wrapper(*args, **kwargs):
             name = self.get_name(function, args[0])
@@ -100,6 +159,15 @@ class Monitor(object):
         return wrapper
 
     def call(self, function):
+        """
+        Monitor the arguments of a function.
+
+        Parameters:
+            function (function): function to monitor
+
+        Returns:
+            function: wrapped function
+        """
         @wraps(function)
         def wrapper(*args, **kwargs):
             name = self.get_name(function, args[0])
@@ -111,6 +179,15 @@ class Monitor(object):
         return wrapper
 
     def result(self, function):
+        """
+        Monitor the return value of a function.
+
+        Parameters:
+            function (function): function to monitor
+
+        Returns:
+            function: wrapped function
+        """
         @wraps(function)
         def wrapper(*args, **kwargs):
             name = self.get_name(function, args[0])

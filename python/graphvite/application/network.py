@@ -46,12 +46,13 @@ class LinkPredictor(nn.Module):
     """
     Link prediction network for graphs / knowledge graphs
     """
-    def __init__(self, score_function, *embeddings):
+    def __init__(self, score_function, *embeddings, **kwargs):
         super(LinkPredictor, self).__init__()
         if isinstance(score_function, types.FunctionType):
             self.score_function = score_function
         else:
             self.score_function = getattr(LinkPredictor, score_function)
+        self.kwargs = kwargs
         self.embeddings = nn.ModuleList()
         for embedding in embeddings:
             embedding = torch.as_tensor(embedding)
@@ -63,7 +64,7 @@ class LinkPredictor(nn.Module):
         vectors = []
         for index, embedding in zip(indexes, self.embeddings):
             vectors.append(embedding(index))
-        return self.score_function(*vectors)
+        return self.score_function(*vectors, **self.kwargs)
 
     @staticmethod
     def LINE(heads, tails):
@@ -74,13 +75,13 @@ class LinkPredictor(nn.Module):
     DeepWalk = LINE
 
     @staticmethod
-    def TransE(heads, relations, tails):
+    def TransE(heads, relations, tails, margin=12):
         x = heads + relations - tails
-        distance = x.norm(p=1, dim=1)
-        return -distance
+        score = margin - x.norm(p=1, dim=1)
+        return score
 
     @staticmethod
-    def RotatE(heads, relations, tails):
+    def RotatE(heads, relations, tails, margin=12):
         dim = heads.size(1) // 2
 
         head_re, head_im = heads.view(-1, dim, 2).permute(2, 0, 1)
@@ -91,8 +92,8 @@ class LinkPredictor(nn.Module):
         x_re = head_re * relation_re - head_im * relation_im - tail_re
         x_im = head_re * relation_im + head_im * relation_re - tail_im
         x = torch.stack([x_re, x_im], dim=0)
-        distance = x.norm(p=2, dim=0).sum(dim=1)
-        return -distance
+        score = margin - x.norm(p=2, dim=0).sum(dim=1)
+        return score
 
     @staticmethod
     def DistMult(heads, relations, tails):

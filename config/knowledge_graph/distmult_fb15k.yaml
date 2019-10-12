@@ -1,5 +1,5 @@
 application:
-  knowledge_graph
+  knowledge graph
 
 resource:
   gpus: []
@@ -22,7 +22,7 @@ build:
 train:
   model: DistMult
   num_epoch: 1000
-  l3_regularization: 5.0e-4
+  l3_regularization: 1.0e-3
   sample_batch_size: 2000
   adversarial_temperature: 2
   log_frequency: 100

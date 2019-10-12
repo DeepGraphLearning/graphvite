@@ -24,38 +24,29 @@
 
 namespace graphvite {
 namespace gpu {
-
-namespace line {
+namespace graph {
 
 /**
- * @brief Train LINE with 0-moment optimizers
- *
- * Update protocols of embeddings
- * - vertex: in place
- * - context: in place
- *
- * @tparam Vector type of embedding vectors
+ * @brief Train node embedding with 0-moment optimizers
+ * @tparam Vector vector type of embeddings
  * @tparam Index integral type of indexes
- * @tparam type type of optimizer
+ * @tparam Model embedding model
+ * @tparam optimizer_type type of optimizer
  */
-template<class Vector, class Index, OptimizerType type>
-__global__ void train(Memory <Vector, Index> vertex_embeddings, Memory <Vector, Index> context_embeddings,
-                      Memory<Index, int> batch, Memory<Index, int> negative_batch, Optimizer optimizer,
-                      float negative_weight
-#ifdef USE_LOSS
-        , Memory<typename Vector::Float, int> loss
-#endif
-) {
+template<class Vector, class Index, template<class> class Model, OptimizerType optimizer_type>
+__global__ void train(Memory<Vector, Index> vertex_embeddings, Memory<Vector, Index> context_embeddings,
+                      Memory<Index, int> batch, Memory<Index, int> negative_batch,
+                      Memory<typename Vector::Float, int> loss,
+                      Optimizer optimizer, float negative_weight) {
     static const size_t dim = Vector::dim;
     typedef typename Vector::Float Float;
 
-    int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    int lane_id = thread_id % kWarpSize;
-    int num_thread = gridDim.x * blockDim.x;
-    int batch_size = batch.count / 2;
-    int num_negative = negative_batch.count / batch_size;
-
-    auto update = get_update_function<Float, type>();
+    const int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const int lane_id = thread_id % kWarpSize;
+    const int num_thread = gridDim.x * blockDim.x;
+    const int batch_size = batch.count / 2;
+    const int num_negative = negative_batch.count / batch_size;
+    Model<Vector> model;
 
     __shared__ Vector buffer[kThreadPerBlock / kWarpSize];
     Vector &vertex_buffer = buffer[threadIdx.x / kWarpSize];
@@ -65,11 +56,9 @@ __global__ void train(Memory <Vector, Index> vertex_embeddings, Memory <Vector, 
         // each positive sample is {tail, head}
         Index head_id = batch[sample_id * 2 + 1];
         Vector &vertex = vertex_embeddings[head_id];
-        for (int i = lane_id; i < dim; i += kWarpSize)
-            vertex_buffer[i] = vertex[i];
-#ifdef USE_LOSS
+        vertex_buffer = vertex;
         Float sample_loss = 0;
-#endif
+
         for (int s = 0; s <= num_negative; s++) {
             Index tail_id;
             int label;
@@ -82,72 +71,51 @@ __global__ void train(Memory <Vector, Index> vertex_embeddings, Memory <Vector, 
             }
             Vector &context = context_embeddings[tail_id];
             // Forward
-            Float x = 0;
-            for (int i = lane_id; i < dim; i += kWarpSize)
-                x += vertex_buffer[i] * context[i];
-            x = WarpBroadcast(WarpReduce(x), 0);
-            Float prob = x > 0 ? 1 / (1 + exp(-x)) : exp(x) / (exp(x) + 1);
+            Float logit;
+            model.forward(vertex_buffer, context, logit);
+            Float prob = sigmoid(logit);
             // Backward
             Float gradient, weight;
             if (label) {
                 gradient = prob - 1;
                 weight = 1;
-#ifdef USE_LOSS
                 sample_loss += weight * -log(prob + kEpsilon);
-#endif
             } else {
                 gradient = prob;
                 weight = negative_weight;
-#ifdef USE_LOSS
                 sample_loss += weight * -log(1 - prob + kEpsilon);
-#endif
             }
-            for (int i = lane_id; i < dim; i += kWarpSize) {
-                Float v = vertex_buffer[i];
-                Float c = context[i];
-                vertex_buffer[i] -= (optimizer.*update)(v, gradient * c, weight);
-                context[i] -= (optimizer.*update)(c, gradient * v, weight);
-            }
+            model.backward<optimizer_type>(vertex_buffer, context, gradient, optimizer, weight);
         }
-#ifdef USE_LOSS
+
         if (lane_id == 0)
             loss[sample_id] = sample_loss / (1 + num_negative * negative_weight);
-#endif
-        for (int i = lane_id; i < dim; i += kWarpSize)
-            vertex[i] = vertex_buffer[i];
+        vertex = vertex_buffer;
     }
 }
 
 /**
- * @brief Train LINE with 1-moment optimizers
- *
- * Update protocols of embeddings
- * - vertex: in place
- * - context: in place
- *
- * @tparam Vector type of embedding vectors
+ * @brief Train node embedding with 1-moment optimizers
+ * @tparam Vector vector type of embeddings
  * @tparam Index integral type of indexes
- * @tparam type type of optimizer
+ * @tparam Model embedding model
+ * @tparam optimizer_type type of optimizer
  */
-template<class Vector, class Index, OptimizerType type>
+template<class Vector, class Index, template<class> class Model, OptimizerType optimizer_type>
 __global__ void train_1_moment(Memory <Vector, Index> vertex_embeddings, Memory <Vector, Index> context_embeddings,
                                Memory<Vector, Index> vertex_moment1s, Memory<Vector, Index> context_moment1s,
-                               Memory<Index, int> batch, Memory<Index, int> negative_batch, Optimizer optimizer,
-                               float negative_weight
-#ifdef USE_LOSS
-        , Memory<typename Vector::Float, int> loss
-#endif
-) {
+                               Memory<Index, int> batch, Memory<Index, int> negative_batch,
+                               Memory<typename Vector::Float, int> loss,
+                               Optimizer optimizer, float negative_weight) {
     static const size_t dim = Vector::dim;
     typedef typename Vector::Float Float;
 
-    int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    int lane_id = thread_id % kWarpSize;
-    int num_thread = gridDim.x * blockDim.x;
-    int batch_size = batch.count / 2;
-    int num_negative = negative_batch.count / batch_size;
-
-    auto update = get_update_function_1_moment<Float, type>();
+    const int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const int lane_id = thread_id % kWarpSize;
+    const int num_thread = gridDim.x * blockDim.x;
+    const int batch_size = batch.count / 2;
+    const int num_negative = negative_batch.count / batch_size;
+    Model<Vector> model;
 
     __shared__ Vector buffer[kThreadPerBlock / kWarpSize];
     Vector &vertex_buffer = buffer[threadIdx.x / kWarpSize];
@@ -158,11 +126,9 @@ __global__ void train_1_moment(Memory <Vector, Index> vertex_embeddings, Memory 
         Index head_id = batch[sample_id * 2 + 1];
         Vector &vertex = vertex_embeddings[head_id];
         Vector &vertex_moment1 = vertex_moment1s[head_id];
-        for (int i = lane_id; i < dim; i += kWarpSize)
-            vertex_buffer[i] = vertex[i];
-#ifdef USE_LOSS
+        vertex_buffer = vertex;
         Float sample_loss = 0;
-#endif
+
         for (int s = 0; s <= num_negative; s++) {
             Index tail_id;
             int label;
@@ -176,73 +142,53 @@ __global__ void train_1_moment(Memory <Vector, Index> vertex_embeddings, Memory 
             Vector &context = context_embeddings[tail_id];
             Vector &context_moment1 = context_moment1s[tail_id];
             // Forward
-            Float x = 0;
-            for (int i = lane_id; i < dim; i += kWarpSize)
-                x += vertex_buffer[i] * context[i];
-            x = WarpBroadcast(WarpReduce(x), 0);
-            Float prob = x > 0 ? 1 / (1 + exp(-x)) : exp(x) / (exp(x) + 1);
+            Float logit;
+            model.forward(vertex_buffer, context, logit);
+            Float prob = sigmoid(logit);
             // Backward
             Float gradient, weight;
             if (label) {
                 gradient = prob - 1;
                 weight = 1;
-#ifdef USE_LOSS
                 sample_loss += weight * -log(prob + kEpsilon);
-#endif
             } else {
                 gradient = prob;
                 weight = negative_weight;
-#ifdef USE_LOSS
                 sample_loss += weight * -log(1 - prob + kEpsilon);
-#endif
             }
-            for (int i = lane_id; i < dim; i += kWarpSize) {
-                Float v = vertex_buffer[i];
-                Float c = context[i];
-                vertex_buffer[i] -= (optimizer.*update)(v, gradient * c, vertex_moment1[i], weight);
-                context[i] -= (optimizer.*update)(c, gradient * v, context_moment1[i], weight);
-            }
+            model.backward<optimizer_type>(vertex_buffer, context, vertex_moment1, context_moment1,
+                                           gradient, optimizer, weight);
         }
-#ifdef USE_LOSS
+
         if (lane_id == 0)
             loss[sample_id] = sample_loss / (1 + num_negative * negative_weight);
-#endif
-        for (int i = lane_id; i < dim; i += kWarpSize)
-            vertex[i] = vertex_buffer[i];
+        vertex = vertex_buffer;
     }
 }
 
 /**
- * @brief Train LINE with 2-moment optimizers
- *
- * Update protocols of embeddings
- * - vertex: in place
- * - context: in place
- *
- * @tparam Vector type of embedding vectors
+ * @brief Train node embedding with 2-moment optimizers
+ * @tparam Vector vector type of embeddings
  * @tparam Index integral type of indexes
- * @tparam type type of optimizer
+ * @tparam Model embedding model
+ * @tparam optimizer_type type of optimizer
  */
-template<class Vector, class Index, OptimizerType type>
-__global__ void train_2_moment(Memory <Vector, Index> vertex_embeddings, Memory <Vector, Index> context_embeddings,
+template<class Vector, class Index, template<class> class Model, OptimizerType optimizer_type>
+__global__ void train_2_moment(Memory<Vector, Index> vertex_embeddings, Memory <Vector, Index> context_embeddings,
                                Memory<Vector, Index> vertex_moment1s, Memory<Vector, Index> context_moment1s,
                                Memory<Vector, Index> vertex_moment2s, Memory<Vector, Index> context_moment2s,
-                               Memory<Index, int> batch, Memory<Index, int> negative_batch, Optimizer optimizer,
-                               float negative_weight
-#ifdef USE_LOSS
-        , Memory<typename Vector::Float, int> loss
-#endif
-) {
+                               Memory<Index, int> batch, Memory<Index, int> negative_batch,
+                               Memory<typename Vector::Float, int> loss,
+                               Optimizer optimizer, float negative_weight) {
     static const size_t dim = Vector::dim;
     typedef typename Vector::Float Float;
 
-    int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    int lane_id = thread_id % kWarpSize;
-    int num_thread = gridDim.x * blockDim.x;
-    int batch_size = batch.count / 2;
-    int num_negative = negative_batch.count / batch_size;
-
-    auto update = get_update_function_2_moment<Float, type>();
+    const int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const int lane_id = thread_id % kWarpSize;
+    const int num_thread = gridDim.x * blockDim.x;
+    const int batch_size = batch.count / 2;
+    const int num_negative = negative_batch.count / batch_size;
+    Model<Vector> model;
 
     __shared__ Vector buffer[kThreadPerBlock / kWarpSize];
     Vector &vertex_buffer = buffer[threadIdx.x / kWarpSize];
@@ -254,11 +200,9 @@ __global__ void train_2_moment(Memory <Vector, Index> vertex_embeddings, Memory 
         Vector &vertex = vertex_embeddings[head_id];
         Vector &vertex_moment1 = vertex_moment1s[head_id];
         Vector &vertex_moment2 = vertex_moment2s[head_id];
-        for (int i = lane_id; i < dim; i += kWarpSize)
-            vertex_buffer[i] = vertex[i];
-#ifdef USE_LOSS
+        vertex_buffer = vertex;
         Float sample_loss = 0;
-#endif
+
         for (int s = 0; s <= num_negative; s++) {
             Index tail_id;
             int label;
@@ -273,45 +217,67 @@ __global__ void train_2_moment(Memory <Vector, Index> vertex_embeddings, Memory 
             Vector &context_moment1 = context_moment1s[tail_id];
             Vector &context_moment2 = context_moment2s[tail_id];
             // Forward
-            Float x = 0;
-            for (int i = lane_id; i < dim; i += kWarpSize)
-                x += vertex_buffer[i] * context[i];
-            x = WarpBroadcast(WarpReduce(x), 0);
-            Float prob = x > 0 ? 1 / (1 + exp(-x)) : exp(x) / (exp(x) + 1);
+            Float logit;
+            model.forward(vertex_buffer, context, logit);
+            Float prob = sigmoid(logit);
             // Backward
             Float gradient, weight;
             if (label) {
                 gradient = prob - 1;
                 weight = 1;
-#ifdef USE_LOSS
                 sample_loss += weight * -log(prob + kEpsilon);
-#endif
             } else {
                 gradient = prob;
                 weight = negative_weight;
-#ifdef USE_LOSS
                 sample_loss += weight * -log(1 - prob + kEpsilon);
-#endif
             }
-            for (int i = lane_id; i < dim; i += kWarpSize) {
-                Float v = vertex_buffer[i];
-                Float c = context[i];
-                vertex_buffer[i] -= (optimizer.*update)(v, gradient * c, vertex_moment1[i], vertex_moment2[i], weight);
-                context[i] -= (optimizer.*update)(c, gradient * v, context_moment1[i], context_moment2[i], weight);
-            }
+            model.backward<optimizer_type>(vertex_buffer, context, vertex_moment1, context_moment1,
+                                           vertex_moment2, context_moment2, gradient, optimizer, weight);
         }
-#ifdef USE_LOSS
+
         if (lane_id == 0)
             loss[sample_id] = sample_loss / (1 + num_negative * negative_weight);
-#endif
-        for (int i = lane_id; i < dim; i += kWarpSize)
-            vertex[i] = vertex_buffer[i];
+        vertex = vertex_buffer;
     }
 }
-} // namespace line
 
-namespace deepwalk = line;
-namespace node2vec = line;
+/**
+ * @brief Predict logits for batch samples
+ * @tparam Vector vector type of embeddings
+ * @tparam Index integral type of indexes
+ * @tparam Model embedding model
+ */
+template<class Vector, class Index, template<class> class Model>
+__global__ void predict(Memory<Vector, Index> vertex_embeddings, Memory<Vector, Index> context_embeddings,
+                        Memory<Index, int> batch, Memory<typename Vector::Float, int> logits) {
+    static const size_t dim = Vector::dim;
+    typedef typename Vector::Float Float;
 
+    const int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const int lane_id = thread_id % kWarpSize;
+    const int num_thread = gridDim.x * blockDim.x;
+    const int batch_size = batch.count / 2;
+    Model<Vector> model;
+
+    __shared__ Vector buffer[kThreadPerBlock / kWarpSize];
+    Vector &vertex_buffer = buffer[threadIdx.x / kWarpSize];
+
+    for (int sample_id = thread_id / kWarpSize; sample_id < batch_size; sample_id += num_thread / kWarpSize) {
+        // elements in std::tuple are stored in reverse order
+        // each positive sample is {tail, head}
+        Index head_id = batch[sample_id * 2 + 1];
+        Index tail_id = batch[sample_id * 2];
+        Vector &vertex = vertex_embeddings[head_id];
+        Vector &context = context_embeddings[tail_id];
+
+        Float logit;
+        model.forward(vertex, context, logit);
+
+        if (lane_id == 0)
+            logits[sample_id] = logit;
+    }
+}
+
+} // namespace graph
 } // namespace gpu
 } // namespace graphvite
