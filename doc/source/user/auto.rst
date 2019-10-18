@@ -24,5 +24,9 @@ Here lists hyperparameters that support auto deduction.
         num_partition: auto
         episode_size: auto
 
+    train:
+        # for node embedding
+        augmentation_step: auto
+
 .. note::
     The auto value for ``gpus`` is an empty list.

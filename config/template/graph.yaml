@@ -65,9 +65,9 @@ train:
   negative_weight: 5
   # Exponent of degrees in negative sampling. Default is recommended.
   negative_sample_exponent: 0.75
-  # Augmentation step. Need to be tuned on the validation set.
+  # Augmentation step. Default is usually reasonable.
   # Larger value is needed for sparser graphs.
-  augmentation_step: 5
+  augmentation_step: auto
   # Return parameter and in-out parameters (node2vec). Need to be tuned on the validation set.
   p: 1
   q: 1

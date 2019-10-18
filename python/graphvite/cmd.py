@@ -176,8 +176,7 @@ def visualize_main(args):
     else:
         labels = None
 
-    gv.init_logging(logging.INFO)
-    # gv.init_logging(logging.WARNING)
+    gv.init_logging(logging.WARNING)
 
     app = gap.VisualizationApplication(args.dim, [0])
     app.load(vectors=vectors, perplexity=args.perplexity)

@@ -52,6 +52,8 @@
 
 namespace graphvite {
 
+const int kExpectedDegree = 1600;
+
 /**
  * @brief Normal graphs without attributes
  * @tparam _Index integral type of node indexes
@@ -742,7 +744,7 @@ public:
      * @param _log_frequency log every log_frequency batches
      */
     void train(const std::string &_model = "LINE", int _num_epoch = 2000, bool _resume = false,
-               int _augmentation_step = 5, int _random_walk_length = 40, int _random_walk_batch_size = 100,
+               int _augmentation_step = kAuto, int _random_walk_length = 40, int _random_walk_batch_size = 100,
                int _shuffle_base = kAuto, float _p = 1, float _q = 1, int _positive_reuse = 1,
                float _negative_sample_exponent = 0.75, float _negative_weight = 5, int _log_frequency = 1000) {
         augmentation_step = _augmentation_step;
@@ -752,6 +754,8 @@ public:
         p = _p;
         q = _q;
 
+        if (augmentation_step == kAuto)
+            augmentation_step = log(kExpectedDegree) / log(float(num_edge) / num_vertex);
         if (shuffle_base == kAuto)
             shuffle_base = augmentation_step;
         if (model == "DeepWalk" || model == "node2vec")

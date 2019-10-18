@@ -43,13 +43,16 @@ class ApplicationMixin(object):
         dim (int): dimension of embeddings
         gpus (list of int, optional): GPU ids, default is all GPUs
         cpu_per_gpu (int, optional): number of CPU threads per GPU, default is all CPUs
+        gpu_memory_limit (int, optional): memory limit per GPU in bytes, default is all memory
         float_type (dtype, optional): type of parameters
         index_type (dtype, optional): type of graph indexes
     """
-    def __init__(self, dim, gpus=[], cpu_per_gpu=auto, float_type=cfg.float_type, index_type=cfg.index_type):
+    def __init__(self, dim, gpus=[], cpu_per_gpu=auto, gpu_memory_limit=auto,
+                 float_type=cfg.float_type, index_type=cfg.index_type):
         self.dim = dim
         self.gpus = gpus
         self.cpu_per_gpu = cpu_per_gpu
+        self.gpu_memory_limit = gpu_memory_limit
         self.float_type = float_type
         self.index_type = index_type
         self.set_format()
@@ -236,7 +239,8 @@ class GraphApplication(ApplicationMixin):
             num_sampler_per_worker = auto
         else:
             num_sampler_per_worker = self.cpu_per_gpu - 1
-        return solver.GraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker)
+        return solver.GraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker,
+                                  self.gpu_memory_limit)
 
     def node_classification(self, X=None, Y=None, file_name=None, portions=(0.02,), normalization=False, times=1,
                             patience=100):
@@ -513,7 +517,8 @@ class WordGraphApplication(ApplicationMixin):
             num_sampler_per_worker = auto
         else:
             num_sampler_per_worker = self.cpu_per_gpu - 1
-        return solver.GraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker)
+        return solver.GraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker,
+                                  self.gpu_memory_limit)
 
 
 class KnowledgeGraphApplication(ApplicationMixin):
@@ -573,7 +578,8 @@ class KnowledgeGraphApplication(ApplicationMixin):
             num_sampler_per_worker = auto
         else:
             num_sampler_per_worker = self.cpu_per_gpu - 1
-        return solver.KnowledgeGraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker)
+        return solver.KnowledgeGraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker,
+                                           self.gpu_memory_limit)
 
     def entity_prediction(self, H=None, R=None, T=None, file_name=None, save_file=None, target="tail", k=10,
                           backend=cfg.backend):
@@ -1032,7 +1038,8 @@ class VisualizationApplication(ApplicationMixin):
         else:
             num_sampler_per_worker = self.cpu_per_gpu - 1
 
-        return solver.VisualizationSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker)
+        return solver.VisualizationSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker,
+                                          self.gpu_memory_limit)
 
     def visualization(self, Y=None, file_name=None, save_file=None, figure_size=10, scale=2):
         """

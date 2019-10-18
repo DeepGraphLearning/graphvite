@@ -451,11 +451,11 @@ public:
 
         def("train", &GraphSolver::train, py::no_gil(),
             py::arg("model") = "LINE", py::arg("num_epoch") = 2000, py::arg("resume") = false,
-            py::arg("augmentation_step") = 5, py::arg("random_walk_length") = 40,
+            py::arg("augmentation_step") = graphvite::kAuto, py::arg("random_walk_length") = 40,
             py::arg("random_walk_batch_size") = 100, py::arg("shuffle_base") = graphvite::kAuto, py::arg("p") = 1,
             py::arg("q") = 1, py::arg("positive_reuse") = 1, py::arg("negative_sample_exponent") = 0.75,
             py::arg("negative_weight") = 5, py::arg("log_frequency") = 1000,
-            "train(model='LINE', num_epoch=2000, resume=False, augmentation_step=5, random_walk_length=40, "
+            "train(model='LINE', num_epoch=2000, resume=False, augmentation_step=auto, random_walk_length=40, "
                   "random_walk_batch_size=100, shuffle_base=auto, p=1, q=1, positive_reuse=1, "
                   "negative_sample_exponent=0.75, negative_weight=5, log_frequency=1000)"
             R"(

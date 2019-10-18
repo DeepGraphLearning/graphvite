@@ -886,7 +886,7 @@ class ImageNet(Dataset):
         numpy_file = os.path.splitext(save_file)[0] + ".npy"
         if os.path.exists(numpy_file):
             return np.load(numpy_file)
-        features = self.image_feature_data(self.train_image, save_file)
+        features = self.image_feature_data(self.train_image)
         np.save(numpy_file, features)
         return features
 
@@ -932,7 +932,7 @@ class ImageNet(Dataset):
         numpy_file = os.path.splitext(save_file)[0] + ".npy"
         if os.path.exists(numpy_file):
             return np.load(numpy_file)
-        features = self.image_feature_data(self.valid_image, save_file)
+        features = self.image_feature_data(self.valid_image)
         np.save(numpy_file, features)
         return features
 
