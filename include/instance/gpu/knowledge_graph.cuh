@@ -103,8 +103,12 @@ __global__ void train(Memory<Vector, Index> head_embeddings, Memory<Vector, Inde
                 sample_loss += weight * -log(prob + kEpsilon);
             } else {
                 gradient = prob;
-                if (adversarial_temperature > kEpsilon)
+                if (adversarial_temperature > kEpsilon) {
                     weight = safe_exp((logit - bias) / adversarial_temperature) / normalizer;
+                    // the normalizer may be out of date in ASGD
+                    // so we need to clip the weight
+                    weight = min(weight, Float(1));
+                }
                 else
                     weight = 1.0 / num_negative;
                 sample_loss += weight * -log(1 - prob + kEpsilon);
@@ -198,8 +202,12 @@ __global__ void train_1_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
                 sample_loss += weight * -log(prob + kEpsilon);
             } else {
                 gradient = prob;
-                if (adversarial_temperature > kEpsilon)
+                if (adversarial_temperature > kEpsilon) {
                     weight = safe_exp((logit - bias) / adversarial_temperature) / normalizer;
+                    // the normalizer may be out of date in ASGD
+                    // so we need to clip the weight
+                    weight = min(weight, Float(1));
+                }
                 else
                     weight = 1.0 / num_negative;
                 sample_loss += weight * -log(1 - prob + kEpsilon);
@@ -298,8 +306,12 @@ __global__ void train_2_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
                 sample_loss += weight * -log(prob + kEpsilon);
             } else {
                 gradient = prob;
-                if (adversarial_temperature > kEpsilon)
+                if (adversarial_temperature > kEpsilon) {
                     weight = safe_exp((logit - bias) / adversarial_temperature) / normalizer;
+                    // the normalizer may be out of date in ASGD
+                    // so we need to clip the weight
+                    weight = min(weight, Float(1));
+                }
                 else
                     weight = 1.0 / num_negative;
                 sample_loss += weight * -log(1 - prob + kEpsilon);

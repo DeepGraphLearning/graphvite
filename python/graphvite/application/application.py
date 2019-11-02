@@ -883,7 +883,7 @@ class KnowledgeGraphApplication(ApplicationMixin):
         mem_per_sample = sample_size * (2 * 3 * np.uint32().itemsize + 1 * np.uint64().itemsize)
         max_batch_size = int(memory.available / mem_per_sample / self.MEMORY_SCALE_FACTOR)
         if max_batch_size < batch_size:
-            logger.info("Memory is not enough for optimal prediction batch size."
+            logger.info("Memory is not enough for optimal prediction batch size. "
                         "Use the maximal possible size instead.")
             batch_size = max_batch_size
         return batch_size
