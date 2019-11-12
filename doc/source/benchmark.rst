@@ -99,7 +99,7 @@ Knowledge Graph Embedding
 -------------------------
 
 For knowledge graph embedding, we benchmark `TransE`_, `DistMult`_, `ComplEx`_ and
-`RotatE`_ on 4 standard datasets. The training time, evaluation time and resource of
+`RotatE`_ on 5 standard datasets. The training time, evaluation time and resource of
 `RotatE`_ on these datasets are given in the following table.
 
 +---------------------+-------+-------+-------+----------------------------+-----------------+
@@ -112,6 +112,8 @@ For knowledge graph embedding, we benchmark `TransE`_, `DistMult`_, `ComplEx`_ a
 | `WN18`_             | 41K   | 141K  | 18    | 16.4 mins / 12.0 s         | 4 * 776 MiB     |
 +---------------------+-------+-------+-------+----------------------------+-----------------+
 | `WN18RR`_           | 41K   | 87K   | 11    | 14.8 mins / 8.98 s         | 4 * 776 MiB     |
++---------------------+-------+-------+-------+----------------------------+-----------------+
+| `Wikidata5m`_       | 5.0M  | 21M   | 828   | 2.10 hrs / 54.9 mins       | 4 * 2.96 GiB    |
 +---------------------+-------+-------+-------+----------------------------+-----------------+
 
 To evaluate the knowledge graph embeddings, we test them on the link prediction
@@ -205,6 +207,28 @@ are computed based on filtered results.
     :download:`complex_wn18rr.yaml<../../config/knowledge_graph/complex_wn18rr.yaml>`
     :download:`simple_wn18rr.yaml<../../config/knowledge_graph/simple_wn18rr.yaml>`
     :download:`rotate_wn18rr.yaml<../../config/knowledge_graph/rotate_wn18rr.yaml>`
+
++---------------+--------+-------+---------+---------+----------+
+| `Wikidata5m`_ | MR     | MRR   | HITS\@1 | HITS\@3 | HITS\@10 |
++===============+========+=======+=========+=========+==========+
+| `TransE`_     | 109370 | 0.253 | 0.170   | 0.311   | 0.392    |
++---------------+--------+-------+---------+---------+----------+
+| `DistMult`_   | 211030 | 0.253 | 0.209   | 0.278   | 0.334    |
++---------------+--------+-------+---------+---------+----------+
+| `ComplEx`_    | 244540 | 0.281 | 0.228   | 0.310   | 0.373    |
++---------------+--------+-------+---------+---------+----------+
+| `SimplE`_     | 112754 | 0.296 | 0.252   | 0.317   | 0.377    |
++---------------+--------+-------+---------+---------+----------+
+| `RotatE`_     | 89459  | 0.290 | 0.234   | 0.322   | 0.390    |
++---------------+--------+-------+---------+---------+----------+
+
+.. seealso::
+    Configuration files:
+    :download:`transe_wikidata5m.yaml<../../config/knowledge_graph/transe_wikidata5m.yaml>`
+    :download:`distmult_wikidata5m.yaml<../../config/knowledge_graph/distmult_wikidata5m.yaml>`
+    :download:`complex_wikidata5m.yaml<../../config/knowledge_graph/complex_wikidata5m.yaml>`
+    :download:`simple_wikidata5m.yaml<../../config/knowledge_graph/simple_wikidata5m.yaml>`
+    :download:`rotate_wikidata5m.yaml<../../config/knowledge_graph/rotate_wikidata5m.yaml>`
 
 Graph & High-dimensional Data Visualization
 -------------------------------------------

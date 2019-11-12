@@ -40,9 +40,9 @@ use.
 
     >>> import pickle
     >>> with open("line_blogcatalog.pkl", "rb") as fin:
-    >>>     blogcatalog = pickle.load(fin)
-    >>> names = blogcatalog.id2name
-    >>> embeddings = blogcatalog.vertex_embeddings
+    >>>     model = pickle.load(fin)
+    >>> names = model.graph.id2name
+    >>> embeddings = model.solver.vertex_embeddings
     >>> print(names[1024], embeddings[1024])
 
 Another interesting example is a synthetic math dataset of arithmetic operations. By

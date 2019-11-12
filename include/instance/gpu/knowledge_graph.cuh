@@ -38,7 +38,8 @@ template<class Vector, class Index, template<class> class Model, OptimizerType o
 __global__ void train(Memory<Vector, Index> head_embeddings, Memory<Vector, Index> tail_embeddings,
                       Memory<Vector, Index> relation_embeddings, Memory<Index, int> batch,
                       Memory<Index, int> negative_batch, Memory<typename Vector::Float, int> loss,
-                      Optimizer optimizer, float margin_or_l3, float adversarial_temperature) {
+                      Optimizer optimizer, float relation_lr_multiplier, float margin_or_l3,
+                      float adversarial_temperature) {
     typedef typename Vector::Float Float;
 
     const int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -113,7 +114,8 @@ __global__ void train(Memory<Vector, Index> head_embeddings, Memory<Vector, Inde
                     weight = 1.0 / num_negative;
                 sample_loss += weight * -log(1 - prob + kEpsilon);
             }
-            model.backward<optimizer_type>(head, tail, relation, margin_or_l3, gradient, optimizer, weight);
+            model.backward<optimizer_type>(head, tail, relation,
+                                           margin_or_l3, gradient, optimizer, relation_lr_multiplier, weight);
         }
 
         if (lane_id == 0)
@@ -134,7 +136,8 @@ __global__ void train_1_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
                                Memory<Vector, Index> tail_moment1s, Memory<Vector, Index> relation_moment1s,
                                Memory<Index, int> batch, Memory<Index, int> negative_batch,
                                Memory<typename Vector::Float, int> loss,
-                               Optimizer optimizer, float margin_or_l3, float adversarial_temperature) {
+                               Optimizer optimizer, float relation_lr_multiplier, float margin_or_l3,
+                               float adversarial_temperature) {
     typedef typename Vector::Float Float;
 
     const int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -213,7 +216,7 @@ __global__ void train_1_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
                 sample_loss += weight * -log(1 - prob + kEpsilon);
             }
             model.backward<optimizer_type>(head, tail, relation, head_moment1, tail_moment1, relation_moment1,
-                                           margin_or_l3, gradient, optimizer, weight);
+                                           margin_or_l3, gradient, optimizer, relation_lr_multiplier, weight);
         }
 
         if (lane_id == 0)
@@ -235,7 +238,8 @@ __global__ void train_2_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
                                Memory<Vector, Index> head_moment2s, Memory<Vector, Index> tail_moment2s,
                                Memory<Vector, Index> relation_moment2s, Memory<Index, int> batch,
                                Memory<Index, int> negative_batch, Memory<typename Vector::Float, int> loss,
-                               Optimizer optimizer, float margin_or_l3, float adversarial_temperature) {
+                               Optimizer optimizer, float relation_lr_multiplier, float margin_or_l3,
+                               float adversarial_temperature) {
     typedef typename Vector::Float Float;
 
     const int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -318,7 +322,7 @@ __global__ void train_2_moment(Memory<Vector, Index> head_embeddings, Memory<Vec
             }
             model.backward<optimizer_type>(head, tail, relation, head_moment1, tail_moment1, relation_moment1,
                                            head_moment2, tail_moment2, relation_moment2,
-                                           margin_or_l3, gradient, optimizer, weight);
+                                           margin_or_l3, gradient, optimizer, relation_lr_multiplier, weight);
         }
 
         if (lane_id == 0)

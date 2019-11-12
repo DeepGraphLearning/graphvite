@@ -27,7 +27,7 @@ The source code is organized as follows.
     - ``include/base/*`` implements basic data structures
     - ``include/core/*`` implements optimizers, and core interface of graphs and solvers
     - ``include/instance/*`` implements instances of graphs and solvers
-    - ``include/instance/gpu/*`` implements GPU training & evaluation routine       s
+    - ``include/instance/gpu/*`` implements GPU training & evaluation routines
     - ``include/instance/model/*`` implements forward & backward propagation of models
     - ``include/util/*`` implements basic utils
     - ``include/bind.h`` implements Python bindings

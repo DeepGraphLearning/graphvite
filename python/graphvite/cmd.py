@@ -155,7 +155,7 @@ def run_main(args):
         for evaluation in cfg.evaluate:
             app.evaluate(**evaluation)
     if "save" in cfg:
-        app.save(**cfg.save)
+        app.save_model(**cfg.save)
 
 
 def visualize_main(args):
@@ -220,6 +220,8 @@ def baseline_main(args):
     app = gap.Application(cfg.application, **cfg.resource)
     app.load(**cfg.graph)
     app.build(**cfg.build)
+    if "load" in cfg:
+        app.load_model(**cfg.load)
     app.train(**cfg.train)
     if args.eval and "evaluate" in cfg:
         if isinstance(cfg.evaluate, dict):
@@ -227,7 +229,7 @@ def baseline_main(args):
         for evaluation in cfg.evaluate:
             app.evaluate(**evaluation)
     if "save" in cfg:
-        app.save(**cfg.save)
+        app.save_model(**cfg.save)
 
 
 def list_main(args):

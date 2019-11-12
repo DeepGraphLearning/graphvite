@@ -698,17 +698,13 @@ public:
                 sample_indexes[i][j].resize(this_pool_size);
                 num_predict_batch += (this_pool_size + batch_size - 1) / batch_size;
             }
-//        LOG(INFO) << "all pool size = " << all_pool;
 
-//        LOG(INFO) << "start distribute";
         for (int i = 0; i < num_sampler + num_worker; i++)
             sample_threads[i] = std::thread(&Sampler::distribute, samplers[0], work_load * i,
                                              std::min(work_load * (i + 1), num_sample), i);
         for (auto &&thread : sample_threads)
             thread.join();
-//        LOG(INFO) << "end distribute";
 
-//        LOG(INFO) << "start predict";
         results.resize(num_sample);
         std::vector<std::thread> worker_threads(num_worker);
         auto schedule = get_schedule();
@@ -718,7 +714,6 @@ public:
             for (int i = 0; i < assignment.size(); i++)
                 worker_threads[i].join();
         }
-//        LOG(INFO) << "end predict";
 
         decltype(predict_pool)().swap(predict_pool);
         decltype(sample_indexes)().swap(sample_indexes);
@@ -740,7 +735,6 @@ public:
             LOG(FATAL) << "Expect an array with shape (?, " << kSampleSize
                        << "), but shape (" << ss.str() << ") is found";
         }
-//        LOG(INFO) << "begin predict numpy";
         array = &_array;
         is_train = false;
 
@@ -760,13 +754,11 @@ public:
         std::vector<std::thread> sample_threads(num_sampler + num_worker);
         size_t num_sample = array->shape(0);
         size_t work_load = (num_sample + num_sampler - 1) / num_sampler;
-//        LOG(INFO) << "begin count";
         for (int i = 0; i < num_sampler + num_worker; i++)
             sample_threads[i] = std::thread(&Sampler::count_numpy, samplers[0], work_load * i,
                                             std::min(work_load * (i + 1), num_sample), i);
         for (auto &&thread : sample_threads)
             thread.join();
-//        LOG(INFO) << "end count";
 
         for (int i = 0; i < num_sampler; i++)
             for (int j = 0; j < num_partition; j++)
@@ -784,30 +776,25 @@ public:
                 num_predict_batch += (this_pool_size + batch_size - 1) / batch_size;
             }
 
-//        LOG(INFO) << "begin distribute";
         for (int i = 0; i < num_sampler + num_worker; i++)
             sample_threads[i] = std::thread(&Sampler::distribute_numpy, samplers[0], work_load * i,
                                             std::min(work_load * (i + 1), num_sample), i);
         for (auto &&thread : sample_threads)
             thread.join();
-//        LOG(INFO) << "end distribute";
 
         results.resize(num_sample);
         std::vector<std::thread> worker_threads(num_worker);
         auto schedule = get_schedule();
-//        LOG(INFO) << "begin predict kernel";
         for (auto &&assignment : schedule) {
             for (int i = 0; i < assignment.size(); i++)
                 worker_threads[i] = std::thread(&Worker::predict, workers[i], assignment[i].first, assignment[i].second);
             for (int i = 0; i < assignment.size(); i++)
                 worker_threads[i].join();
         }
-//        LOG(INFO) << "end predict kernel";
 
         decltype(predict_pool)().swap(predict_pool);
         decltype(sample_indexes)().swap(sample_indexes);
         decltype(pool_offsets)().swap(pool_offsets);
-//        LOG(INFO) << "end predict numpy";
 
         py::array_t<Float> _results(num_sample);
         memcpy(_results.mutable_data(), results.data(), num_sample * sizeof(Float));

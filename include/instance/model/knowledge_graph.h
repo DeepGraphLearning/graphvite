@@ -49,7 +49,8 @@ public:
     template<OptimizerType optimizer_type>
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
-                         float margin, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float margin, Float gradient, const Optimizer &optimizer, float relation_lr_multiplier = 1,
+                         Float weight = 1) {
         auto update = get_update_function<Float, optimizer_type>();
         FOR(i, dim) {
             Float h = head[i];
@@ -58,7 +59,7 @@ public:
             Float s = h + r - t > 0 ? 1 : -1;
             head[i] -= (optimizer.*update)(h, -gradient * s, weight);
             tail[i] -= (optimizer.*update)(t, gradient * s, weight);
-            relation[i] -= (optimizer.*update)(r, -gradient * s, weight);
+            relation[i] -= relation_lr_multiplier * (optimizer.*update)(r, -gradient * s, weight);
         }
     }
 
@@ -66,7 +67,8 @@ public:
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
-                         float margin, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float margin, Float gradient, const Optimizer &optimizer, float relation_lr_multiplier = 1,
+                         Float weight = 1) {
         auto update = get_update_function_1_moment<Float, optimizer_type>();
         FOR(i, dim) {
             Float h = head[i];
@@ -75,7 +77,7 @@ public:
             Float s = h + r - t > 0 ? 1 : -1;
             head[i] -= (optimizer.*update)(h, -gradient * s, head_moment1[i], weight);
             tail[i] -= (optimizer.*update)(t, gradient * s, tail_moment1[i], weight);
-            relation[i] -= (optimizer.*update)(r, -gradient * s, relation_moment1[i], weight);
+            relation[i] -= relation_lr_multiplier * (optimizer.*update)(r, -gradient * s, relation_moment1[i], weight);
         }
     }
 
@@ -84,7 +86,8 @@ public:
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
                          Vector &head_moment2, Vector &tail_moment2, Vector &relation_moment2,
-                         float margin, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float margin, Float gradient, const Optimizer &optimizer, float relation_lr_multiplier = 1,
+                         Float weight = 1) {
         auto update = get_update_function_2_moment<Float, optimizer_type>();
         FOR(i, dim) {
             Float h = head[i];
@@ -93,7 +96,8 @@ public:
             Float s = h + r - t > 0 ? 1 : -1;
             head[i] -= (optimizer.*update)(h, -gradient * s, head_moment1[i], head_moment2[i], weight);
             tail[i] -= (optimizer.*update)(t, gradient * s, tail_moment1[i], tail_moment2[i], weight);
-            relation[i] -= (optimizer.*update)(r, -gradient * s, relation_moment1[i], relation_moment2[i], weight);
+            relation[i] -= relation_lr_multiplier *
+                    (optimizer.*update)(r, -gradient * s, relation_moment1[i], relation_moment2[i], weight);
         }
     }
 };
@@ -124,7 +128,8 @@ public:
     template<OptimizerType optimizer_type>
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
-                         float l3_regularization, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function<Float, optimizer_type>();
         l3_regularization *= 3;
         FOR(i, dim) {
@@ -133,7 +138,8 @@ public:
             Float r = relation[i];
             head[i] -= (optimizer.*update)(h, gradient * r * t + l3_regularization * abs(h) * h, weight);
             tail[i] -= (optimizer.*update)(t, gradient * h * r + l3_regularization * abs(t) * t, weight);
-            relation[i] -= (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r, weight);
+            relation[i] -= relation_lr_multiplier *
+                    (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r, weight);
         }
     }
 
@@ -141,7 +147,8 @@ public:
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
-                         float l3_regularization, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function_1_moment<Float, optimizer_type>();
         l3_regularization *= 3;
         FOR(i, dim) {
@@ -152,8 +159,9 @@ public:
                                            head_moment1[i], weight);
             tail[i] -= (optimizer.*update)(t, gradient * h * r + l3_regularization * abs(t) * t,
                                            tail_moment1[i], weight);
-            relation[i] -= (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r,
-                                               relation_moment1[i], weight);
+            relation[i] -= relation_lr_multiplier *
+                    (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r,
+                                        relation_moment1[i], weight);
         }
     }
 
@@ -162,7 +170,8 @@ public:
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
                          Vector &head_moment2, Vector &tail_moment2, Vector &relation_moment2,
-                         float l3_regularization, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function_2_moment<Float, optimizer_type>();
         l3_regularization *= 3;
         FOR(i, dim) {
@@ -173,8 +182,9 @@ public:
                                            head_moment1[i], head_moment2[i], weight);
             tail[i] -= (optimizer.*update)(t, gradient * h * r + l3_regularization * abs(t) * t,
                                            tail_moment1[i], tail_moment2[i], weight);
-            relation[i] -= (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r,
-                                               relation_moment1[i], relation_moment2[i], weight);
+            relation[i] -= relation_lr_multiplier *
+                    (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r,
+                                        relation_moment1[i], relation_moment2[i], weight);
         }
     }
 };
@@ -215,7 +225,8 @@ public:
     template<OptimizerType optimizer_type>
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
-                         float l3_regularization, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function<Float, optimizer_type>();
         l3_regularization *= 3;
         FOR(i, dim / 2) {
@@ -238,8 +249,10 @@ public:
             // relation
             Float r_re_grad = gradient * (h_re * t_re + h_im * t_im);
             Float r_im_grad = gradient * (-h_im * t_re + h_re * t_im);
-            relation[i * 2] -= (optimizer.*update)(r_re, r_re_grad + l3_regularization * abs(r_re) * r_re, weight);
-            relation[i * 2 + 1] -= (optimizer.*update)(r_im, r_im_grad + l3_regularization * abs(r_im) * r_im, weight);
+            relation[i * 2] -= relation_lr_multiplier *
+                    (optimizer.*update)(r_re, r_re_grad + l3_regularization * abs(r_re) * r_re, weight);
+            relation[i * 2 + 1] -= relation_lr_multiplier *
+                    (optimizer.*update)(r_im, r_im_grad + l3_regularization * abs(r_im) * r_im, weight);
         }
     }
 
@@ -247,7 +260,8 @@ public:
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
-                         float l3_regularization, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function_1_moment<Float, optimizer_type>();
         l3_regularization *= 3;
         FOR(i, dim / 2) {
@@ -274,10 +288,12 @@ public:
             // relation
             Float r_re_grad = gradient * (h_re * t_re + h_im * t_im);
             Float r_im_grad = gradient * (-h_im * t_re + h_re * t_im);
-            relation[i * 2] -= (optimizer.*update)(r_re, r_re_grad + l3_regularization * abs(r_re) * r_re,
-                                                   relation_moment1[i], weight);
-            relation[i * 2 + 1] -= (optimizer.*update)(r_im, r_im_grad + l3_regularization * abs(r_im) * r_im,
-                                                       relation_moment1[i], weight);
+            relation[i * 2] -= relation_lr_multiplier *
+                    (optimizer.*update)(r_re, r_re_grad + l3_regularization * abs(r_re) * r_re,
+                                        relation_moment1[i], weight);
+            relation[i * 2 + 1] -= relation_lr_multiplier *
+                    (optimizer.*update)(r_im, r_im_grad + l3_regularization * abs(r_im) * r_im,
+                                        relation_moment1[i], weight);
         }
     }
 
@@ -286,7 +302,8 @@ public:
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
                          Vector &head_moment2, Vector &tail_moment2, Vector &relation_moment2,
-                         float l3_regularization, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function_2_moment<Float, optimizer_type>();
         l3_regularization *= 3;
         FOR(i, dim / 2) {
@@ -313,10 +330,12 @@ public:
             // relation
             Float r_re_grad = gradient * (h_re * t_re + h_im * t_im);
             Float r_im_grad = gradient * (-h_im * t_re + h_re * t_im);
-            relation[i * 2] -= (optimizer.*update)(r_re, r_re_grad + l3_regularization * abs(r_re) * r_re,
-                                                   relation_moment1[i], relation_moment2[i], weight);
-            relation[i * 2 + 1] -= (optimizer.*update)(r_im, r_im_grad + l3_regularization * abs(r_im) * r_im,
-                                                       relation_moment1[i], relation_moment2[i], weight);
+            relation[i * 2] -= relation_lr_multiplier *
+                    (optimizer.*update)(r_re, r_re_grad + l3_regularization * abs(r_re) * r_re,
+                                        relation_moment1[i], relation_moment2[i], weight);
+            relation[i * 2 + 1] -= relation_lr_multiplier *
+                    (optimizer.*update)(r_im, r_im_grad + l3_regularization * abs(r_im) * r_im,
+                                        relation_moment1[i], relation_moment2[i], weight);
         }
     }
 };
@@ -350,7 +369,8 @@ public:
     template<OptimizerType optimizer_type>
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
-                         float l3_regularization, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function<Float, optimizer_type>();
         l3_regularization *= 3;
         FOR(i, dim) {
@@ -360,7 +380,8 @@ public:
             Float r = relation[i];
             head[i] -= (optimizer.*update)(h, gradient * r * t + l3_regularization * abs(h) * h, weight);
             tail[j] -= (optimizer.*update)(t, gradient * h * r + l3_regularization * abs(t) * t, weight);
-            relation[i] -= (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r, weight);
+            relation[i] -= relation_lr_multiplier *
+                    (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r, weight);
         }
     }
 
@@ -368,7 +389,8 @@ public:
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
-                         float l3_regularization, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function_1_moment<Float, optimizer_type>();
         l3_regularization *= 3;
         FOR(i, dim) {
@@ -380,8 +402,9 @@ public:
                                            head_moment1[i], weight);
             tail[j] -= (optimizer.*update)(t, gradient * h * r + l3_regularization * abs(t) * t,
                                            tail_moment1[j], weight);
-            relation[i] -= (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r,
-                                               relation_moment1[i], weight);
+            relation[i] -= relation_lr_multiplier *
+                    (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r,
+                                        relation_moment1[i], weight);
         }
     }
 
@@ -390,7 +413,8 @@ public:
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
                          Vector &head_moment2, Vector &tail_moment2, Vector &relation_moment2,
-                         float l3_regularization, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function_2_moment<Float, optimizer_type>();
         l3_regularization *= 3;
         FOR(i, dim) {
@@ -402,8 +426,9 @@ public:
                                            head_moment1[i], head_moment2[i], weight);
             tail[j] -= (optimizer.*update)(t, gradient * h * r + l3_regularization * abs(t) * t,
                                            tail_moment1[j], tail_moment2[j], weight);
-            relation[i] -= (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r,
-                                               relation_moment1[i], relation_moment2[i], weight);
+            relation[i] -= relation_lr_multiplier *
+                    (optimizer.*update)(r, gradient * h * t + l3_regularization * abs(r) * r,
+                                        relation_moment1[i], relation_moment2[i], weight);
         }
     }
 };
@@ -446,7 +471,8 @@ public:
     template<OptimizerType optimizer_type>
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
-                         float margin, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float margin, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function<Float, optimizer_type>();
         FOR(i, dim / 2) {
             Float phase = relation[i];
@@ -470,7 +496,7 @@ public:
             // relation
             Float relation_grad =
                     -grad * (distance_re * (h_re * -r_im + h_im * -r_re) + distance_im * (h_re * r_re + h_im * -r_im));
-            relation[i] -= (optimizer.*update)(phase, relation_grad, weight);
+            relation[i] -= relation_lr_multiplier * (optimizer.*update)(phase, relation_grad, weight);
         }
     }
 
@@ -478,7 +504,8 @@ public:
     __host__ __device__
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
-                         float margin, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float margin, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function_1_moment<Float, optimizer_type>();
         FOR(i, dim / 2) {
             Float phase = relation[i];
@@ -502,7 +529,8 @@ public:
             // relation
             Float relation_grad =
                     -grad * (distance_re * (h_re * -r_im + h_im * -r_re) + distance_im * (h_re * r_re + h_im * -r_im));
-            relation[i] -= (optimizer.*update)(phase, relation_grad, relation_moment1[i], weight);
+            relation[i] -= relation_lr_multiplier *
+                    (optimizer.*update)(phase, relation_grad, relation_moment1[i], weight);
         }
     }
 
@@ -511,7 +539,8 @@ public:
     static void backward(Vector &head, Vector &tail, Vector &relation,
                          Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
                          Vector &head_moment2, Vector &tail_moment2, Vector &relation_moment2,
-                         float margin, Float gradient, const Optimizer &optimizer, Float weight = 1) {
+                         float margin, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
         auto update = get_update_function_2_moment<Float, optimizer_type>();
         FOR(i, dim / 2) {
             Float phase = relation[i];
@@ -539,7 +568,8 @@ public:
             // relation
             Float relation_grad =
                     -grad * (distance_re * (h_re * -r_im + h_im * -r_re) + distance_im * (h_re * r_re + h_im * -r_im));
-            relation[i] -= (optimizer.*update)(phase, relation_grad, relation_moment1[i], relation_moment2[i], weight);
+            relation[i] -= relation_lr_multiplier *
+                    (optimizer.*update)(phase, relation_grad, relation_moment1[i], relation_moment2[i], weight);
         }
     }
 };

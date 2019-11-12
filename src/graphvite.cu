@@ -23,7 +23,7 @@
 
 #include "bind.h"
 
-const std::string version = "0.2.0";
+const std::string version = "0.2.1";
 
 PYBIND11_MODULE(libgraphvite, module) {
     py::options options;

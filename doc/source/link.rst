@@ -27,6 +27,7 @@
 .. _FB15k-237: https://www.aclweb.org/anthology/W15-4007
 .. _WN18: http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-relational-data.pdf
 .. _WN18RR: https://www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/download/17366/15884
+.. _Wikidata5m: https://www.wikidata.org
 
 .. Image datasets
 .. _MNIST: http://yann.lecun.com/exdb/publis/pdf/lecun-01a.pdf

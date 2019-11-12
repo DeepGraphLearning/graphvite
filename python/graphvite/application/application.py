@@ -129,27 +129,70 @@ class ApplicationMixin(object):
         return result
 
     @monitor.time
-    def save(self, file_name):
+    def load_model(self, file_name):
         """
-        Save embeddings and name mappings in numpy format.
+        Load model in pickle format.
+
+        Parameters:
+            file_name (str): file name:
+        """
+        logger.warning("load model from `%s`" % file_name)
+
+        with open(file_name, "rb") as fin:
+            model = pickle.load(fin)
+        self.set_parameters(model)
+
+    @monitor.time
+    def save_model(self, file_name, save_hyperparameter=False):
+        """
+        Save model in pickle format.
 
         Parameters:
             file_name (str): file name
+            save_hyperparameter (bool, optional): save hyperparameters or not, default is false
         """
-        logger.warning("save embeddings and name mappings to `%s`" % file_name)
+        def is_mapping(name, attribute):
+            return "2" in name
 
-        objects = EasyDict()
-        for name in dir(self.graph):
-            object = getattr(self.graph, name)
-            if isinstance(object, list) and len(object) > 0 and isinstance(object[0], str): # id2name
-                objects[name] = object
-        for name in dir(self.solver):
-            object = getattr(self.solver, name)
-            if isinstance(object, np.ndarray): # embedding
-                objects[name] = object
+        def is_embedding(name, attribute):
+            if name[0] == "_":
+                return False
+            return isinstance(attribute, np.ndarray)
+
+        def is_hyperparameter(name, attribute):
+            if name[0] == "_":
+                return False
+            return isinstance(attribute, int) or isinstance(attribute, float) or isinstance(attribute, str)
+
+        def get_attributes(object, filter):
+            attributes = EasyDict()
+            for name in dir(object):
+                attribute = getattr(object, name)
+                if filter(name, attribute):
+                    attributes[name] = attribute
+            return attributes
+
+        logger.warning("save model to `%s`" % file_name)
+
+        model = EasyDict()
+        model.graph = get_attributes(self.graph, is_mapping)
+        model.solver = get_attributes(self.solver, is_embedding)
+        if save_hyperparameter:
+            model.graph.update(get_attributes(self.graph, is_hyperparameter))
+            model.solver.update(get_attributes(self.solver, is_hyperparameter))
+            model.solver.optimizer = get_attributes(self.solver.optimizer, is_hyperparameter)
+            model.solver.optimizer.schedule = self.solver.optimizer.schedule.type
 
         with open(file_name, "wb") as fout:
-            pickle.dump(objects, fout, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(model, fout, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def get_mapping(self, id2name, name2id):
+        mapping = []
+        for name in id2name:
+            if name not in name2id:
+                raise ValueError("Can't find the embedding for `%s`" % name)
+            mapping.append(name2id[name])
+        return mapping
 
     def tokenize(self, str):
         str = str.strip(self.delimiters)
@@ -241,6 +284,11 @@ class GraphApplication(ApplicationMixin):
             num_sampler_per_worker = self.cpu_per_gpu - 1
         return solver.GraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker,
                                   self.gpu_memory_limit)
+
+    def set_parameters(self, model):
+        mapping = self.get_mapping(self.graph.id2name, model.graph.name2id)
+        self.solver.vertex_embeddings[:] = model.solver.vertex_embeddings[mapping]
+        self.solver.context_embeddings[:] = model.solver.context_embeddings[mapping]
 
     def node_classification(self, X=None, Y=None, file_name=None, portions=(0.02,), normalization=False, times=1,
                             patience=100):
@@ -520,6 +568,11 @@ class WordGraphApplication(ApplicationMixin):
         return solver.GraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker,
                                   self.gpu_memory_limit)
 
+    def set_parameters(self, model):
+        mapping = self.get_mapping(self.graph.id2name, model.graph.name2id)
+        self.solver.vertex_embeddings[:] = model.solver.vertex_embeddings[mapping]
+        self.solver.context_embeddings[:] = model.solver.context_embeddings[mapping]
+
 
 class KnowledgeGraphApplication(ApplicationMixin):
     """
@@ -580,6 +633,12 @@ class KnowledgeGraphApplication(ApplicationMixin):
             num_sampler_per_worker = self.cpu_per_gpu - 1
         return solver.KnowledgeGraphSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker,
                                            self.gpu_memory_limit)
+
+    def set_parameters(self, model):
+        entity_mapping = self.get_mapping(self.graph.id2entity, model.graph.entity2id)
+        relation_mapping = self.get_mapping(self.graph.id2relation, model.graph.relation2id)
+        self.solver.entity_embeddings[:] = model.solver.entity_embeddings[entity_mapping]
+        self.solver.relation_embeddings[:] = model.solver.relation_embeddings[relation_mapping]
 
     def entity_prediction(self, H=None, R=None, T=None, file_name=None, save_file=None, target="tail", k=10,
                           backend=cfg.backend):
@@ -1040,6 +1099,12 @@ class VisualizationApplication(ApplicationMixin):
 
         return solver.VisualizationSolver(self.dim, self.float_type, self.index_type, self.gpus, num_sampler_per_worker,
                                           self.gpu_memory_limit)
+
+    def set_parameters(self, model):
+        if self.solver.coordinates.shape != model.solver.coordinates.shape:
+            raise ValueError("Expect coordinates with shape %s, but %s is found" %
+                             (self.solver.coordinates.shape, model.solver.coordinates.shape))
+        self.solver.coordinates[:] = model.solver.coordinates
 
     def visualization(self, Y=None, file_name=None, save_file=None, figure_size=10, scale=2):
         """

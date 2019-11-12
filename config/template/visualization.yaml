@@ -58,11 +58,18 @@ build:
   # Default is recommended.
   episode_size: auto
 
+# Comment out this section if not needed.
+load:
+  # Path to model file, can be "*.pkl".
+  file_name: visualization.pkl
+
 train:
   # Model, can be LargeVis.
   model: LargeVis
   # Number of epochs. Default is recommended.
   num_epoch: 50
+  # Resume training from a loaded model.
+  resume: false
   # Weight of negative samples. Values larger than 10 may cause unstable training.
   negative_weight: 3
   # Exponent of degrees in negative sampling. Default is recommended.
@@ -126,4 +133,7 @@ evaluate:
   
 # Comment out this section if not needed.
 save:
+  # Path to save file, can be "*.pkl".
   file_name: visualization.pkl
+  # Save hyperparameters or not.
+  save_hyperparameter: false

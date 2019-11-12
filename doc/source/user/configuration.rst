@@ -9,8 +9,8 @@ Experiment configuration
 ------------------------
 
 An experiment configuration starts with an ``application type``, and contains settings
-for ``resource``, ``format``, ``graph``, ``build``, ``train``, ``evaluate`` and
-``save`` stages.
+for ``resource``, ``format``, ``graph``, ``build``, ``load``, ``train``, ``evaluate``
+and ``save`` stages.
 
 Here is the configuration used in :doc:`../quick_start`.
 :download:`quick_start.yaml <../../../config/demo/quick_start.yaml>`
@@ -76,12 +76,27 @@ See section 3.2 in `GraphVite paper <GraphVite_>`_  for a detailed illustration.
 
 .. code-block:: yaml
 
+    load:
+      file_name: [file name]
+
+Loading a model is optional.
+
+.. code-block:: yaml
+
     train:
       model: [model]
       num_epoch: [number of epochs]
-      negative_weight: [weight for negative sample]
-      log_frequency: 1000
+      resume: [resume training or not]
+      log_frequency: [log frequency in batches]
       # and other application-specific configuration
+
+To resume training from a loaded model, set ``resume`` to true in ``train``.
+
+.. seealso::
+    Training interface:
+    :meth:`Graph <graphvite.solver.GraphSolver.train>`,
+    :meth:`Knowledge graph <graphvite.solver.KnowledgeGraphSolver.train>`,
+    :meth:`Visualization <graphvite.solver.VisualizationSolver.train>`
 
 .. code-block:: yaml
 
@@ -93,12 +108,27 @@ See section 3.2 in `GraphVite paper <GraphVite_>`_  for a detailed illustration.
 
 Evaluation is optional. There may be multiple evaluation tasks.
 
+.. seealso::
+    Evaluation tasks:
+
+    - Graph: \
+      :meth:`link prediction <graphvite.application.GraphApplication.link_prediction>`,
+      :meth:`node classification <graphvite.application.GraphApplication.node_classification>`
+    - Knowledge graph:
+      :meth:`link prediction <graphvite.application.KnowledgeGraphApplication.link_prediction>`,
+      :meth:`entity prediction <graphvite.application.KnowledgeGraphApplication.entity_prediction>`
+    - Visualization:
+      :meth:`visualization <graphvite.application.VisualizationApplication.visualization>`,
+      :meth:`animation <graphvite.application.VisualizationApplication.animation>`,
+      :meth:`hierarchy <graphvite.application.VisualizationApplication.hierarchy>`
+
 .. code-block:: yaml
 
     save:
         file_name: [file name]
+        save_hyperparameter: [save hyperparameters or not]
 
-Saving embeddings is optional.
+Saving the model is optional.
 
 For more detailed settings, we recommend to read the baseline configurations
 for concrete examples. They can be found under ``config/`` in the Python package,

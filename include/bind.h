@@ -406,14 +406,18 @@ public:
         def_readonly("num_negative", &GraphSolver::num_negative);
         def_readonly("optimizer", &GraphSolver::optimizer);
         def_readonly("negative_sample_exponent", &GraphSolver::negative_sample_exponent);
+        def_readonly("negative_weight", &GraphSolver::negative_weight);
         def_readonly("model", &GraphSolver::model);
         def_readonly("num_epoch", &GraphSolver::num_epoch);
+        def_readonly("resume", &GraphSolver::resume);
         def_readonly("episode_size", &GraphSolver::episode_size);
         def_readonly("batch_size", &GraphSolver::batch_size);
         def_readonly("augmentation_step", &GraphSolver::augmentation_step);
         def_readonly("random_walk_length", &GraphSolver::random_walk_length);
         def_readonly("random_walk_batch_size", &GraphSolver::random_walk_batch_size);
         def_readonly("shuffle_base", &GraphSolver::shuffle_base);
+        def_readonly("p", &GraphSolver::p);
+        def_readonly("q", &GraphSolver::q);
         def_readonly("positive_reuse", &GraphSolver::positive_reuse);
         def_readonly("log_frequency", &GraphSolver::log_frequency);
         def_readonly("num_worker", &GraphSolver::num_worker);
@@ -537,6 +541,8 @@ public:
         def_readonly("negative_sample_exponent", &KnowledgeGraphSolver::negative_sample_exponent);
         def_readonly("model", &KnowledgeGraphSolver::model);
         def_readonly("num_epoch", &KnowledgeGraphSolver::num_epoch);
+        def_readonly("resume", &KnowledgeGraphSolver::resume);
+        def_readonly("relation_lr_multiplier", &KnowledgeGraphSolver::relation_lr_multiplier);
         def_readonly("episode_size", &KnowledgeGraphSolver::episode_size);
         def_readonly("batch_size", &KnowledgeGraphSolver::batch_size);
         def_readonly("margin", &KnowledgeGraphSolver::margin);
@@ -578,11 +584,13 @@ public:
             )");
 
         def("train", &KnowledgeGraphSolver::train, py::no_gil(),
-            py::arg("model") = "RotatE", py::arg("num_epoch") = 2000, py::arg("resume") = false, py::arg("margin") = 12,
-            py::arg("l3_regularization") = 2e-3, py::arg("sample_batch_size") = 2000, py::arg("positive_reuse") = 1,
-            py::arg("adversarial_temperature") = 2, py::arg("log_frequency") = 100,
-            "train(model='RotatE', num_epoch=2000, resume=False, margin=12, l3_regularization=2e-3, "
-                  "sample_batch_size=2000, positive_reuse=1, adversarial_temperature=2, log_frequency=100)"
+            py::arg("model") = "RotatE", py::arg("num_epoch") = 2000, py::arg("resume") = false,
+            py::arg("relation_lr_multiplier") = 1, py::arg("margin") = 12, py::arg("l3_regularization") = 2e-3,
+            py::arg("sample_batch_size") = 2000, py::arg("positive_reuse") = 1, py::arg("adversarial_temperature") = 2,
+            py::arg("log_frequency") = 100,
+            "train(model='RotatE', num_epoch=2000, resume=False, relation_lr_multiplier=1, margin=12, "
+                   "l3_regularization=2e-3, sample_batch_size=2000, positive_reuse=1, adversarial_temperature=2, "
+                   "log_frequency=100)"
             R"(
             Train knowledge graph embeddings.
 
@@ -590,6 +598,7 @@ public:
                 model (str, optional): 'TransE', 'DistMult', 'ComplEx', 'SimplE' or 'RotatE'
                 num_epoch (int, optional): number of epochs, i.e. #positive edges / \|E\|
                 resume (bool, optional): resume training from learned embeddings or not
+                relation_lr_multiplier (float, optional): learning rate multiplier for relation embeddings
                 margin (float, optional): logit margin (for TransE & RotatE)
                 l3_regularization (float, optional): L3 regularization (for DistMult, ComplEx & SimplE)
                 sample_batch_size (int, optional): batch size of samples in samplers
@@ -653,10 +662,13 @@ public:
         // data members
         def_readonly("num_partition", &VisualizationSolver::num_partition);
         def_readonly("num_negative", &VisualizationSolver::num_negative);
+        def_readonly("sample_batch_size", &VisualizationSolver::sample_batch_size);
         def_readonly("optimizer", &VisualizationSolver::optimizer);
         def_readonly("negative_sample_exponent", &VisualizationSolver::negative_sample_exponent);
+        def_readonly("negative_weight", &VisualizationSolver::negative_weight);
         def_readonly("model", &VisualizationSolver::model);
         def_readonly("num_epoch", &VisualizationSolver::num_epoch);
+        def_readonly("resume", &VisualizationSolver::resume);
         def_readonly("episode_size", &VisualizationSolver::episode_size);
         def_readonly("batch_size", &VisualizationSolver::batch_size);
         def_readonly("positive_reuse", &VisualizationSolver::positive_reuse);
@@ -748,22 +760,22 @@ public:
 
         This class has 2 constructors
 
-        .. function:: LRSchedule(schedule='constant')
+        .. function:: LRSchedule(type='constant')
         .. function:: LRSchedule(schedule_function)
 
         Parameters:
-            schedule (str, optional): 'constant' or 'linear'
+            type (str, optional): 'constant' or 'linear'
             schedule_function (callable): function that returns a multiplicative factor,
                 given batch id and total number of batches
         )";
 
         // data members
-        def_readonly("schedule", &LRSchedule::schedule);
+        def_readonly("type", &LRSchedule::type);
         def_readonly("schedule_function", &LRSchedule::schedule_function);
 
         // member functions
         def(py::init<std::string>(), py::no_gil(),
-            py::arg("schedule") = "constant");
+            py::arg("type") = "constant");
 
         def(py::init<LRSchedule::ScheduleFunction>(), py::no_gil(),
             py::arg("schedule_function"));

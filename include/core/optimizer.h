@@ -43,21 +43,21 @@ class LRSchedule {
 public:
     typedef std::function<float(int, int)> ScheduleFunction;
 
-    std::string schedule;
+    std::string type;
     ScheduleFunction schedule_function;
 
     /** Construct a learning rate schedule */
-    LRSchedule(const std::string &_schedule = "constant") : schedule(_schedule) {
-        CHECK(schedule == "linear" || schedule == "constant") << "Invalid schedule `" << schedule << "`";
-        if (schedule == "linear")
+    LRSchedule(const std::string &_type = "constant") : type(_type) {
+        CHECK(type == "linear" || type == "constant") << "Invalid schedule `" << type << "`";
+        if (type == "linear")
             schedule_function = linear_schedule;
-        if (schedule == "constant")
+        if (type == "constant")
             schedule_function = constant_schedule;
     }
 
     /** Construct a learning rate from custom function */
     LRSchedule(const ScheduleFunction &_schedule_function) :
-            schedule("custom"), schedule_function(_schedule_function) {}
+            type("custom"), schedule_function(_schedule_function) {}
 
     LRSchedule(const char *_schedule) : LRSchedule(std::string(_schedule)) {}
 
@@ -69,7 +69,7 @@ public:
     /** Return information about the schedule */
     std::string info() const {
         std::stringstream ss;
-        ss << "lr schedule: " << schedule;
+        ss << "lr schedule: " << type;
         return ss.str();
     }
 

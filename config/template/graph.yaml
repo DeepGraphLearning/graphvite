@@ -55,12 +55,19 @@ build:
   # Default is recommended.
   episode_size: auto
 
+# Comment out this section if not needed.
+load:
+  # Path to model file, can be "*.pkl".
+  file_name: graph.pkl
+
 train:
   # Model, can be DeepWalk, LINE or node2vec.
   model: DeepWalk
   # Number of epochs. Default is usually reasonable for sparse graphs.
   # For dense graphs (|E| / |V| > 100), you may use smaller values.
   num_epoch: 2000
+  # Resume training from a loaded model.
+  resume: false
   # Weight of negative samples. Values larger than 10 may cause unstable training.
   negative_weight: 5
   # Exponent of degrees in negative sampling. Default is recommended.
@@ -102,4 +109,7 @@ evaluate:
 
 # Comment out this section if not needed.
 save:
+  # Path to save file, can be "*.pkl".
   file_name: graph.pkl
+  # Save hyperparameters or not.
+  save_hyperparameter: false

@@ -52,11 +52,21 @@ build:
   # Default is recommended.
   episode_size: auto
 
+# Comment out this section if not needed.
+load:
+  # Path to model file, can be "*.pkl".
+  file_name: knowledge_graph.pkl
+
 train:
   # Model, can be TransE, DistMult, ComplEx, SimplE or RotatE
   model: TransE
   # Number of epochs. Default is usually reasonable.
   num_epoch: 2000
+  # Resume training from a loaded model.
+  resume: false
+  # Learning rate multiplier for relation embeddings.
+  # Need to be tuned on the validation set if using multiple GPUs.
+  relation_lr_multiplier: 1
   # L3 regularization (DistMult, ComplEx and SimplE). Need to be tuned on the validation set.
   l3_regularization: 2.0e-3
   # Margin (TransE, RotatE). Need to be tuned on the validation set.
@@ -104,4 +114,7 @@ evaluate:
 
 # Comment out this section if not needed.
 save:
+  # Path to save file, can be "*.pkl".
   file_name: knowledge_graph.pkl
+  # Save hyperparameters or not.
+  save_hyperparameter: false

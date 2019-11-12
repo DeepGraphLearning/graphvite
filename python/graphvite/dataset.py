@@ -33,6 +33,7 @@ Knowledge Graph
 - :class:`FB15k237`
 - :class:`WN18`
 - :class:`WN18RR`
+- :class:`Wikidata5m`
 - :class:`Freebase`
 
 Visualization
@@ -100,6 +101,7 @@ class Dataset(object):
         :func:`csv2txt`,
         :func:`top_k_label`,
         :func:`induced_graph`,
+        :func:`edge_split`,
         :func:`link_prediction_split`,
         :func:`image_feature_data`
     """
@@ -124,7 +126,10 @@ class Dataset(object):
     def download(self, url):
         from six.moves.urllib.request import urlretrieve
 
-        save_file = os.path.join(self.path, os.path.basename(url))
+        save_file = os.path.basename(url)
+        if "?" in save_file:
+            save_file = save_file[:save_file.find("?")]
+        save_file = os.path.join(self.path, save_file)
         if save_file in self.local_files():
             return save_file
 
@@ -286,6 +291,29 @@ class Dataset(object):
                     if u not in nodes or v not in nodes:
                         continue
                     fout.write("%s\t%s\n" % (u, v))
+
+    def edge_split(self, graph_file, files, portions):
+        """
+        Divide a knowledge graph into several splits.
+
+        Parameters:
+            graph_file (str): graph file
+            files (list of str): file names
+            portions (list of float): split portions
+        """
+        assert len(files) == len(portions)
+        logger.info("splitting graph %s into %s" %
+                    (self.relpath(graph_file), ", ".join([self.relpath(file) for file in files])))
+        np.random.seed(1024)
+
+        portions = np.cumsum(portions, dtype=np.float32) / np.sum(portions)
+        files = [open(file, "w") for file in files]
+        with open(graph_file, "r") as fin:
+            for line in fin:
+                i = np.searchsorted(portions, np.random.rand())
+                files[i].write(line)
+        for file in files:
+            file.close()
 
     def link_prediction_split(self, graph_file, files, portions):
         """
@@ -526,7 +554,7 @@ class Wikipedia(Dataset):
         super(Wikipedia, self).__init__(
             "wikipedia",
             urls={
-                "graph": "https://www.dropbox.com/s/mwt4uu1qu9fflfk/enwiki-latest-pages-articles-sentences.txt.gz"
+                "graph": "https://www.dropbox.com/s/mwt4uu1qu9fflfk/enwiki-latest-pages-articles-sentences.txt.gz?dl=1"
             }
         )
 
@@ -651,6 +679,39 @@ class WN18RR(Dataset):
                 "test": "https://github.com/DeepGraphLearning/KnowledgeGraphEmbedding/raw/master/data/wn18rr/test.txt"
             }
         )
+
+
+class Wikidata5m(Dataset):
+    """
+    Wikidata5m knowledge graph dataset.
+
+    Splits:
+        train, valid, test
+    """
+    def __init__(self):
+        super(Wikidata5m, self).__init__(
+            "wikidata5m",
+            urls={
+                "train": "https://www.dropbox.com/s/dty6ufe1gg6keuc/wikidata5m.txt.gz?dl=1",
+                "valid": "https://www.dropbox.com/s/dty6ufe1gg6keuc/wikidata5m.txt.gz?dl=1",
+                "test": "https://www.dropbox.com/s/dty6ufe1gg6keuc/wikidata5m.txt.gz?dl=1"
+            }
+        )
+
+    def train_preprocess(self, graph_file, train_file):
+        valid_file = train_file[:train_file.rfind("train.txt")] + "valid.txt"
+        test_file = train_file[:train_file.rfind("train.txt")] + "test.txt"
+        self.edge_split(graph_file, [train_file, valid_file, test_file], portions=[4000, 1, 1])
+
+    def valid_preprocess(self, graph_file, valid_file):
+        train_file = valid_file[:valid_file.rfind("valid.txt")] + "train.txt"
+        test_file = valid_file[:valid_file.rfind("valid.txt")] + "test.txt"
+        self.edge_split(graph_file, [train_file, valid_file, test_file], portions=[4000, 1, 1])
+
+    def test_preprocess(self, graph_file, test_file):
+        train_file = test_file[:test_file.rfind("valid.txt")] + "train.txt"
+        valid_file = test_file[:test_file.rfind("train.txt")] + "valid.txt"
+        self.edge_split(graph_file, [train_file, valid_file, test_file], portions=[4000, 1, 1])
 
 
 class Freebase(Dataset):
@@ -995,6 +1056,7 @@ fb15k = FB15k()
 fb15k237 = FB15k237()
 wn18 = WN18()
 wn18rr = WN18RR()
+wikidata5m = Wikidata5m()
 freebase = Freebase()
 
 mnist = MNIST()
@@ -1004,6 +1066,6 @@ imagenet = ImageNet()
 __all__ = [
     "Dataset",
     "BlogCatalog", "Youtube", "Flickr", "Hyperlink2012", "Friendster", "Wikipedia",
-    "Math", "FB15k", "FB15k237", "WN18", "WN18RR", "Freebase",
+    "Math", "FB15k", "FB15k237", "WN18", "WN18RR", "Wikidata5m", "Freebase",
     "MNIST", "CIFAR10", "ImageNet"
 ]

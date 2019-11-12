@@ -3,6 +3,13 @@ Change log
 
 Here list all notable changes in GraphVite library.
 
+v0.2.1 - 2019-11-12
+-------------------
+- New dataset `Wikidata5m` and its benchmarks,
+  including TransE, DistMult, ComplEx, SimplE and RotatE.
+- Add interface for loading pretrained models and save hyperparameters.
+- Add weight clip in asynchronous self-adversarial negative sampling.
+
 v0.2.0 - 2019-10-11
 -------------------
 - Add scalable multi-GPU prediction for node embedding and knowledge graph embedding.

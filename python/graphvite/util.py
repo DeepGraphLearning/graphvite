@@ -64,6 +64,7 @@ def assert_in(candidates, **kwargs):
         assert value in candidates, \
             "Unknown %s `%s`, candidates are %s" % (key, value, readable_list(candidates))
 
+
 class chdir(object):
     """
     Context manager for working directory.

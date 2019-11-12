@@ -333,8 +333,8 @@ public:
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
                             (*embeddings[0], *embeddings[1], *embeddings[2],
-                                    batch, negative_batch, loss,
-                                    optimizer, margin_or_l3, solver->adversarial_temperature
+                                    batch, negative_batch, loss, optimizer,
+                                    solver->relation_lr_multiplier, margin_or_l3, solver->adversarial_temperature
                             );
                     return true;
                 }
@@ -386,8 +386,8 @@ public:
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
                             (*embeddings[0], *embeddings[1], *embeddings[2],
                                     (*moments[0])[0], (*moments[1])[0], (*moments[2])[0],
-                                    batch, negative_batch, loss,
-                                    optimizer, margin_or_l3, solver->adversarial_temperature
+                                    batch, negative_batch, loss, optimizer,
+                                    solver->relation_lr_multiplier, margin_or_l3, solver->adversarial_temperature
                             );
                     return true;
                 }
@@ -420,8 +420,8 @@ public:
                             (*embeddings[0], *embeddings[1], *embeddings[2],
                                     (*moments[0])[0], (*moments[1])[0], (*moments[2])[0],
                                     (*moments[0])[1], (*moments[1])[1], (*moments[2])[1],
-                                    batch, negative_batch, loss,
-                                    optimizer, margin_or_l3, solver->adversarial_temperature
+                                    batch, negative_batch, loss, optimizer,
+                                    solver->relation_lr_multiplier, margin_or_l3, solver->adversarial_temperature
                             );
                     return true;
                 }
@@ -473,7 +473,7 @@ public:
     USING_SOLVER_MIXIN(Base);
     using Base::Base;
 
-    float margin, l3_regularization;
+    float relation_lr_multiplier, margin, l3_regularization;
     float adversarial_temperature;
     std::shared_ptr<std::vector<Vector>> entity_embeddings, relation_embeddings;
 
@@ -573,7 +573,8 @@ public:
         ss << "model: " << model << std::endl;
         ss << optimizer.info() << std::endl;
         ss << "#epoch: " << num_epoch << ", batch size: " << batch_size << std::endl;
-        ss << "resume: " << pretty::yes_no(resume) << std::endl;
+        ss << "resume: " << pretty::yes_no(resume)
+           << ", relation lr multiplier: " << relation_lr_multiplier << std::endl;
         if (model == "TransE" || model == "RotatE")
             ss << "margin: " << margin << ", positive reuse: " << positive_reuse << std::endl;
         if (model == "DistMult" || model == "ComplEx" || model == "SimplE")
@@ -587,6 +588,7 @@ public:
      * @param _model "TransE", "DistMult", "ComplEx", "SimplE" or "RotatE"
      * @param _num_epoch number of epochs, i.e. #positive edges / |E|
      * @param _resume resume training from learned embeddings or not
+     * @param _relation_lr_multiplier learning rate multiplier for relation embeddings
      * @param _margin logit margin (for TransE & RotatE)
      * @param _l3_regularization l3 regularization (for DistMult, ComplEx & SimplE)
      * @param _sample_batch_size batch size of samples in samplers
@@ -595,9 +597,11 @@ public:
      *     disabled when set to non-positive value
      * @param _log_frequency log every log_frequency batches
      */
-    void train(const std::string &_model = "RotatE", int _num_epoch = 2000, bool _resume = false, float _margin = 12,
-               float _l3_regularization = 2e-3, int _sample_batch_size = 2000, int _positive_reuse = 1,
-               float _adversarial_temperature = 2, int _log_frequency = 100) {
+    void train(const std::string &_model = "RotatE", int _num_epoch = 2000, bool _resume = false,
+               float _relation_lr_multiplier = 1, float _margin = 12, float _l3_regularization = 2e-3,
+               int _sample_batch_size = 2000, int _positive_reuse = 1, float _adversarial_temperature = 2,
+               int _log_frequency = 100) {
+        relation_lr_multiplier = _relation_lr_multiplier;
         margin = _margin;
         l3_regularization = _l3_regularization;
         adversarial_temperature = _adversarial_temperature;

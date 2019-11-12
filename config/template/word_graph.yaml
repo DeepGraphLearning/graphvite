@@ -54,11 +54,18 @@ build:
   # Default is recommended, unless it overflows the memory (std::bad_alloc).
   episode_size: auto
 
+# Comment out this section if not needed.
+load:
+  # Path to model file, can be "*.pkl".
+  file_name: word_graph.pkl
+
 train:
   # Model, can be LINE.
   model: LINE
   # Number of epochs. Default is usually reasonable.
   num_epoch: 80
+  # Resume training from a loaded model.
+  resume: false
   # Weight of negative samples. Values larger than 10 may cause unstable training.
   negative_weight: 5
   # Exponent of degrees in negative sampling. Default is recommended.
@@ -74,4 +81,7 @@ train:
 
 # Comment out this section if not needed.
 save:
+  # Path to save file, can be "*.pkl".
   file_name: word_graph.pkl
+  # Save hyperparameters or not.
+  save_hyperparameter: false
