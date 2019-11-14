@@ -206,13 +206,37 @@ public:
      * @param _as_undirected symmetrize the graph or not
      * @param _normalization normalize the adjacency matrix or not
      */
-    void load(const std::vector<std::tuple<std::string, std::string, float>> &edge_list, bool _as_undirected = true,
-              bool _normalization = false) {
+    void load_edge_list(const std::vector<std::tuple<std::string, std::string>> &edge_list,
+                        bool _as_undirected = true, bool _normalization = false) {
         clear();
         as_undirected = _as_undirected;
         normalization = _normalization;
 
         for (auto &&edge : edge_list) {
+            auto &u_name = std::get<0>(edge);
+            auto &v_name = std::get<1>(edge);
+
+            add_edge(u_name, v_name, 1);
+        }
+        if (normalization)
+            normalize();
+
+        LOG(WARNING) << pretty::block(info());
+    }
+
+    /**
+     * @brief Load a graph from an edge list. Store the graph in an adjacency list.
+     * @param weighted_edge_list weighted edge list
+     * @param _as_undirected symmetrize the graph or not
+     * @param _normalization normalize the adjacency matrix or not
+     */
+    void load_weighted_edge_list(const std::vector<std::tuple<std::string, std::string, float>> &weighted_edge_list,
+                                 bool _as_undirected = true, bool _normalization = false) {
+        clear();
+        as_undirected = _as_undirected;
+        normalization = _normalization;
+
+        for (auto &&edge : weighted_edge_list) {
             auto &u_name = std::get<0>(edge);
             auto &v_name = std::get<1>(edge);
             float w = std::get<2>(edge);

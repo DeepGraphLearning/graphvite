@@ -148,22 +148,27 @@ public:
             R"(
             Load a graph from an edge-list file. Store the graph in an adjacency list.
 
-            This function has 2 overloads
+            This function has 3 overloads
 
             .. function:: load(file_name, as_undirected=True, normalization=False, delimiters=' \\t\\r\\n', comment='#')
             .. function:: load(edge_list, as_undirected=True, normalization=False)
+            .. function:: load(weighted_edge_list, as_undirected=True, normalization=False)
 
             Parameters:
                 file_name (str): file name
-                edge_list (list of (str, str, float)): edge list
+                edge_list (list of (str, str)): edge list
+                weighted_edge_list (list of (str, str, float)): weighted edge list
                 as_undirected (bool, optional): symmetrize the graph or not
                 normalization (bool, optional): normalize the adjacency matrix or not
                 delimiters (str, optional): string of delimiter characters
                 comment (str, optional): prefix of comment strings
             )");
 
-        def("load", &Graph::load, py::no_gil(),
+        def("load", &Graph::load_edge_list, py::no_gil(),
             py::arg("edge_list"), py::arg("as_undirected") = true, py::arg("normalization") = false);
+
+        def("load", &Graph::load_weighted_edge_list, py::no_gil(),
+            py::arg("weighted_edge_list"), py::arg("as_undirected") = true, py::arg("normalization") = false);
 
         def("save", &Graph::save, py::no_gil(),
             py::arg("file_name"), py::arg("weighted") = true, py::arg("anonymous") = false,
@@ -272,21 +277,26 @@ public:
             R"(
             Load a knowledge graph from a triplet-list file. Store the graph in an adjacency list.
 
-            This function has 2 overloads
+            This function has 3 overloads
 
             .. function:: load(file_name, normalization=False, delimiters=' \\t\\r\\n', comment='#')
             .. function:: load(triplet_list, normalization=False)
+            .. function:: load(weighted_triplet_list, normalization=False)
 
             Parameters:
                 file_name (str): file name
                 triplet_list (list of (str, str, str)): triplet list
+                weighted_triplet_list (list of (str, str, str, float)): weighted triplet list
                 normalization (bool, optional): normalize the adjacency matrix or not
                 delimiters (str, optional): string of delimiter characters
                 comment (str, optional): prefix of comment strings
             )");
 
-        def("load", &KnowledgeGraph::load, py::no_gil(),
+        def("load", &KnowledgeGraph::load_triplet_list, py::no_gil(),
             py::arg("triplet_list"),  py::arg("normalization") = false);
+
+        def("load", &KnowledgeGraph::load_weighted_triplet_list, py::no_gil(),
+            py::arg("weighted_triplet_list"),  py::arg("normalization") = false);
 
         def("save", &KnowledgeGraph::save, py::no_gil(),
             py::arg("file_name"), py::arg("anonymous") = false,

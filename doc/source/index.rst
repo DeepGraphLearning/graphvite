@@ -15,6 +15,7 @@ GraphVite - graph embedding at high speed and large scale
    quick_start
    overview
    benchmark
+   pretrained_model
 
 .. toctree::
    :maxdepth: 1

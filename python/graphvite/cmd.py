@@ -99,6 +99,10 @@ def load_config(config_file):
     cfg = gv.util.recursive_map(cfg, get_dataset)
     if "optimizer" in cfg.build:
         cfg.build.optimizer = gv.optimizer.Optimizer(**cfg.build.optimizer)
+    if "vectors" in cfg.graph:
+        if cfg.graph.vectors.endswith(".npy"):
+            import numpy as np
+            cfg.graph.vectors = np.load(cfg.graph.vectors)
 
     return cfg
 

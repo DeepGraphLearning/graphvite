@@ -9,11 +9,12 @@ GraphVite - graph embedding at high speed and large scale
 [conda]: https://anaconda.org/milagraph/graphvite
 [license]: LICENSE
 
-[Docs] | [Tutorials] | [Benchmarks]
+[Docs] | [Tutorials] | [Benchmarks] | [Pre-trained models]
 
 [Docs]: https://graphvite.io/docs/latest/api/application
 [Tutorials]: https://graphvite.io/tutorials
-[Benchmarks]: https://graphvite.io/docs/latest/benchmark.html
+[Benchmarks]: https://graphvite.io/docs/latest/benchmark
+[Pre-trained Models]: https://graphvite.io/docs/latest/pretrained_model
 
 GraphVite is a general graph embedding engine, dedicated to high-speed and
 large-scale embedding learning in various applications.

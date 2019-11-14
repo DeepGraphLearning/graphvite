@@ -217,12 +217,36 @@ public:
      * @param triplet_list triplet list
      * @param _normalization normalize the adjacency matrix or not
      */
-    void load(const std::vector<std::tuple<std::string, std::string, std::string, float>> &triplet_list,
-              bool _normalization = false) {
+    void load_triplet_list(const std::vector<std::tuple<std::string, std::string, std::string>> &triplet_list,
+                           bool _normalization = false) {
         clear();
         normalization = _normalization;
 
         for (auto &&edge : triplet_list) {
+            auto &h_name = std::get<0>(edge);
+            auto &r_name = std::get<1>(edge);
+            auto &t_name = std::get<2>(edge);
+
+            add_edge(h_name, r_name, t_name, 1);
+        }
+        if (normalization)
+            normalize();
+
+        LOG(WARNING) << pretty::block(info());
+    }
+
+    /**
+     * @brief Load a knowledge graph from a weighted triplet list. Store the graph in an adjacency list.
+     * @param weighted_triplet_list weighted triplet list
+     * @param _normalization normalize the adjacency matrix or not
+     */
+    void load_weighted_triplet_list(
+            const std::vector<std::tuple<std::string, std::string, std::string, float>> &weighted_triplet_list,
+            bool _normalization = false) {
+        clear();
+        normalization = _normalization;
+
+        for (auto &&edge : weighted_triplet_list) {
             auto &h_name = std::get<0>(edge);
             auto &r_name = std::get<1>(edge);
             auto &t_name = std::get<2>(edge);

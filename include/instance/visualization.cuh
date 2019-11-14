@@ -340,8 +340,8 @@ public:
      * @param _perplexity perplexity for the neighborhood of each node
      * @param _normalized_vector normalize the input vectors or not
      */
-    void load(const std::vector<std::vector<float>> &_vectors, int _num_neighbor = 200, float _perplexity = 30,
-              bool _normalized_vector = true) {
+    void load_vectors(const std::vector<std::vector<float>> &_vectors, int _num_neighbor = 200, float _perplexity = 30,
+                      bool _normalized_vector = true) {
         clear();
 
         num_neighbor = _num_neighbor;
@@ -362,6 +362,13 @@ public:
         LOG(WARNING) << pretty::block(info());
     }
 
+    /**
+     * @brief Build a KNN graph from a numpy array. Store the graph in an adjacency list.
+     * @param _array 2D numpy array
+     * @param _num_neighbor number of neighbors for each node
+     * @param _perplexity perplexity for the neighborhood of each node
+     * @param _normalized_vector normalize the input vectors or not
+     */
     void load_numpy(const py::array_t<float> &_array, int _num_neighbor = 200, float _perplexity = 30,
                     bool _normalized_vector = true) {
         CHECK(_array.ndim() == 2) << "Expect a 2d array, but a " << _array.ndim() << "d array is found";

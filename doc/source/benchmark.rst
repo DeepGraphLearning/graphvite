@@ -95,6 +95,8 @@ than 200 GiB memory to build alias tables for the 2nd order random walks.
     :download:`deepwalk_friendster-small.yaml<../../config/graph/deepwalk_friendster-small.yaml>`
     :download:`line_friendster-small.yaml<../../config/graph/line_friendster-small.yaml>`
 
+.. _knowledge_graph_benchmark:
+
 Knowledge Graph Embedding
 -------------------------
 

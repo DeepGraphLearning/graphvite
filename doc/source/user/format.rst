@@ -2,8 +2,8 @@ Data Format
 ===========
 
 GraphVite is designed to support a wide range of formats for graphs. Generally, it
-does not enforce any type restriction on input elements. We can either use integers
-or strings as our input. Each line in the file is parsed as
+doesn't enforce any type restriction on input elements. We can either use integers or
+strings as our input. Each line in the file is parsed as
 
 .. code-block::
 
@@ -12,7 +12,15 @@ or strings as our input. Each line in the file is parsed as
 By default, GraphVite treats any blank character as delimiter, and string after ``#``
 as comment. You can change these settings in the
 :ref:`format section <experiment configuration>` of configuration files, or using
-``app.set_format()`` in Python code.
+``app.set_format(delimiters, comment)`` in Python code.
+
+GraphVite can also construct graphs from Python objects, which is helpful if graphs
+are dynamically generated. It takes a nested list similar to the file format. Each
+token should be a string or a float.
+
+.. code-block:: python
+
+    graph = [[token, token], [token, token], ...]
 
 Node Embedding
 --------------
@@ -22,6 +30,12 @@ The input graph for node embedding follows the edge list format. Each line shoul
 .. code-block::
 
     [head] [tail]
+
+You may also specify a weight for each edge.
+
+.. code-block::
+
+    [head] [tail] [weight]
 
 For link prediction task, the evaluation file consists of edges and labels.
 
@@ -47,6 +61,12 @@ Each line in a knowledge graph is a triplet.
 .. code-block::
 
     [head] [relation] [tail]
+
+You may also specify a weight for each triplet.
+
+.. code-block::
+
+    [head] [relation] [tail] [weight]
 
 All the files in knowledge graph evaluation tasks take the same triplet format.
 

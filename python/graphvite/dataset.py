@@ -190,7 +190,7 @@ class Dataset(object):
         preprocess = getattr(self, preprocess_name, None)
         if len(urls) > 1 and preprocess is None:
             raise AttributeError(
-                "There are non-trivial number of files,but function `%s` is not found" % preprocess_name)
+                "There are non-trivial number of files, but function `%s` is not found" % preprocess_name)
 
         extract_files = []
         for url, member in zip(urls, members):
@@ -294,7 +294,7 @@ class Dataset(object):
 
     def edge_split(self, graph_file, files, portions):
         """
-        Divide a knowledge graph into several splits.
+        Divide a graph into several splits.
 
         Parameters:
             graph_file (str): graph file
@@ -338,12 +338,12 @@ class Dataset(object):
         num_edges = [0] * len(files)
         with open(graph_file, "r") as fin:
             for line in fin:
-                u, v = line.split()
+                u, v = line.split()[:2]
                 nodes.update([u, v])
                 edges.add((u, v))
                 i = np.searchsorted(portions, np.random.rand())
                 if i == 0:
-                    files[i].write("%s\t%s\n" % (u, v))
+                    files[i].write(line)
                 else:
                     files[i].write("%s\t%s\t1\n" % (u, v))
                 num_edges[i] += 1
@@ -694,7 +694,11 @@ class Wikidata5m(Dataset):
             urls={
                 "train": "https://www.dropbox.com/s/dty6ufe1gg6keuc/wikidata5m.txt.gz?dl=1",
                 "valid": "https://www.dropbox.com/s/dty6ufe1gg6keuc/wikidata5m.txt.gz?dl=1",
-                "test": "https://www.dropbox.com/s/dty6ufe1gg6keuc/wikidata5m.txt.gz?dl=1"
+                "test": "https://www.dropbox.com/s/dty6ufe1gg6keuc/wikidata5m.txt.gz?dl=1",
+                "entity": "https://www.dropbox.com/s/bgmgvk8brjwpc9w/entity.txt.gz?dl=1",
+                "relation": "https://www.dropbox.com/s/37jxki93gguv0pp/relation.txt.gz?dl=1",
+                "alias2entity": [], # depends on `entity`
+                "alias2relation": [] # depends on `relation`
             }
         )
 
@@ -712,6 +716,27 @@ class Wikidata5m(Dataset):
         train_file = test_file[:test_file.rfind("valid.txt")] + "train.txt"
         valid_file = test_file[:test_file.rfind("train.txt")] + "valid.txt"
         self.edge_split(graph_file, [train_file, valid_file, test_file], portions=[4000, 1, 1])
+
+    def load_alias(self, alias_file):
+        alias2object = {}
+        ambiguous = set()
+        with open(alias_file, "r") as fin:
+            for line in fin:
+                tokens = line.strip().split("\t")
+                object = tokens[0]
+                for alias in tokens[1:]:
+                    if alias in alias2object and alias2object[alias] != object:
+                        ambiguous.add(alias)
+                    alias2object[alias] = object
+            for alias in ambiguous:
+                alias2object.pop(alias)
+        return alias2object
+
+    def alias2entity_preprocess(self, save_file):
+        return self.load_alias(self.entity)
+
+    def alias2relation_preprocess(self, save_file):
+        return self.load_alias(self.relation)
 
 
 class Freebase(Dataset):
@@ -820,19 +845,19 @@ class CIFAR10(Dataset):
         batch_files = glob.glob(os.path.join(raw_path, "cifar-10-batches-bin/data_batch_*.bin"))
         return self.load_labels(meta_file, *batch_files)
 
-    def test_image_data_preprocess(self, raw_path, save_path):
+    def test_image_data_preprocess(self, raw_path, save_file):
         batch_file = os.path.join(raw_path, "cifar-10-batches-bin/test_batch.bin")
         return self.load_images(batch_file)
 
-    def test_label_data_preprocess(self, raw_path, save_path):
+    def test_label_data_preprocess(self, raw_path, save_file):
         meta_file = os.path.join(raw_path, "cifar-10-batches-bin/batches.meta.txt")
         batch_file = os.path.join(raw_path, "cifar-10-batches-bin/test_batch.bin")
         return self.load_labels(meta_file, batch_file)
 
-    def image_data_preprocess(self, save_path):
+    def image_data_preprocess(self, save_file):
         return np.concatenate([self.train_image_data, self.test_image_data])
 
-    def label_data_preprocess(self, save_path):
+    def label_data_preprocess(self, save_file):
         return np.concatenate([self.train_label_data, self.test_label_data])
 
 

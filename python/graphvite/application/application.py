@@ -714,18 +714,21 @@ class KnowledgeGraphApplication(ApplicationMixin):
             R = []
             T = []
             with open(file_name, "r") as fin:
-                for line in fin:
+                for i, line in enumerate(fin):
                     tokens = self.tokenize(line)
                     if len(tokens) == 0:
                         continue
-                    if len(tokens) == 3:
-                        h, r, t = tokens
-                    elif target == "head":
-                        r, t = tokens
-                        h = None
+                    if 3 <= len(tokens) <= 4:
+                        h, r, t = tokens[:3]
+                    elif len(tokens) == 2:
+                        if target == "head":
+                            r, t = tokens
+                            h = None
+                        else:
+                            h, r = tokens
+                            t = None
                     else:
-                        h, r = tokens
-                        t = None
+                        raise ValueError("Invalid line format at line %d in %s" % (i + 1, file_name))
                     H.append(h)
                     R.append(r)
                     T.append(t)
@@ -763,6 +766,7 @@ class KnowledgeGraphApplication(ApplicationMixin):
         recalls = new_recalls
 
         if save_file:
+            logger.warning("save entity predictions to `%s`" % save_file)
             extension = os.path.splitext(save_file)[1]
             if extension == ".txt":
                 with open(save_file, "w") as fout:
@@ -861,11 +865,14 @@ class KnowledgeGraphApplication(ApplicationMixin):
             R = []
             T = []
             with open(file_name, "r") as fin:
-                for line in fin:
+                for i, line in enumerate(fin):
                     tokens = self.tokenize(line)
                     if len(tokens) == 0:
                         continue
-                    h, r, t = tokens
+                    if 3 <= len(tokens) <= 4:
+                        h, r, t = tokens[:3]
+                    else:
+                        raise ValueError("Invalid line format at line %d in %s" % (i + 1, file_name))
                     H.append(h)
                     R.append(r)
                     T.append(t)
@@ -880,11 +887,14 @@ class KnowledgeGraphApplication(ApplicationMixin):
             filter_T = []
             for filter_file in filter_files:
                 with open(filter_file, "r") as fin:
-                    for line in fin:
+                    for i, line in enumerate(fin):
                         tokens = self.tokenize(line)
                         if len(tokens) == 0:
                             continue
-                        h, r, t = tokens
+                        if 3 <= len(tokens) <= 4:
+                            h, r, t = tokens[:3]
+                        else:
+                            raise ValueError("Invalid line format at line %d in %s" % (i + 1, filter_file))
                         filter_H.append(h)
                         filter_R.append(r)
                         filter_T.append(t)
