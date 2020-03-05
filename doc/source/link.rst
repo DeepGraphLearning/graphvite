@@ -9,6 +9,7 @@
 .. _ComplEx: http://proceedings.mlr.press/v48/trouillon16.pdf
 .. _SimplE: https://papers.nips.cc/paper/7682-simple-embedding-for-link-prediction-in-knowledge-graphs.pdf
 .. _RotatE: https://arxiv.org/pdf/1902.10197.pdf
+.. _QuatE: https://papers.nips.cc/paper/8541-quaternion-knowledge-graph-embeddings.pdf
 
 .. Graph & high-dimensional data visualization models
 .. _LargeVis: https://arxiv.org/pdf/1602.00370.pdf

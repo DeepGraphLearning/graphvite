@@ -437,7 +437,7 @@ public:
  * @brief RotatE model
  * @tparam _Vector vector type of embeddings
  *
- * Forward: margin - L1_norm(head * relation - tail), with constraint L1_norm(relation[*]) = 1
+ * Forward: margin - L1_norm(head * relation - tail), with constraint L2_norm(relation[*]) = 1
  * Backward: gradient of forward function
  *
  * In practice, the relation is reparameterized as a phase vector to remove the constraint.
@@ -570,6 +570,245 @@ public:
                     -grad * (distance_re * (h_re * -r_im + h_im * -r_re) + distance_im * (h_re * r_re + h_im * -r_im));
             relation[i] -= relation_lr_multiplier *
                     (optimizer.*update)(phase, relation_grad, relation_moment1[i], relation_moment2[i], weight);
+        }
+    }
+};
+
+/**
+ * @brief QuatE model
+ * @tparam _Vector vector type of embeddings
+ *
+ * Forward: sum(hamilton_product(head, relation) * tail), with constraint L2_norm(relation[*]) = 1
+ * Backward: gradient of forward function
+ */
+template<class _Vector>
+class QuatE {
+public:
+    static_assert(_Vector::dim % 4 == 0,
+                  "Model `QuatE` can only be instantiated with vector dimensions divisible by 4");
+    static const size_t dim = _Vector::dim;
+    typedef _Vector Vector;
+    typedef typename _Vector::Float Float;
+
+    __host__ __device__
+    static void forward(const Vector &head, const Vector &tail, const Vector &relation, Float &output,
+                        float l3_regularization) {
+        output = 0;
+        FOR(i, dim / 4) {
+            Float h_r = head[i * 4];
+            Float h_i = head[i * 4 + 1];
+            Float h_j = head[i * 4 + 2];
+            Float h_k = head[i * 4 + 3];
+            Float r_r = relation[i * 4];
+            Float r_i = relation[i * 4 + 1];
+            Float r_j = relation[i * 4 + 2];
+            Float r_k = relation[i * 4 + 3];
+            Float t_r = tail[i * 4];
+            Float t_i = tail[i * 4 + 1];
+            Float t_j = tail[i * 4 + 2];
+            Float t_k = tail[i * 4 + 3];
+            Float r_norm = sqrt(r_r * r_r + r_i * r_i + r_j * r_j + r_k * r_k);
+            Float product_r = h_r * r_r - h_i * r_i - h_j * r_j - h_k * r_k;
+            Float product_i = h_r * r_i + h_i * r_r + h_j * r_k - h_k * r_j;
+            Float product_j = h_r * r_j - h_i * r_k + h_j * r_r + h_k * r_i;
+            Float product_k = h_r * r_k + h_i * r_j - h_j * r_i + h_k * r_r;
+            output += (product_r * t_r + product_i * t_i + product_j * t_j + product_k * t_k) / (r_norm + kEpsilon);
+        }
+        output = SUM(output);
+    }
+
+    template<OptimizerType optimizer_type>
+    __host__ __device__
+    static void backward(Vector &head, Vector &tail, Vector &relation,
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
+        auto update = get_update_function<Float, optimizer_type>();
+        l3_regularization *= 3;
+        FOR(i, dim / 4) {
+            Float h_r = head[i * 4];
+            Float h_i = head[i * 4 + 1];
+            Float h_j = head[i * 4 + 2];
+            Float h_k = head[i * 4 + 3];
+            Float r_r = relation[i * 4];
+            Float r_i = relation[i * 4 + 1];
+            Float r_j = relation[i * 4 + 2];
+            Float r_k = relation[i * 4 + 3];
+            Float t_r = tail[i * 4];
+            Float t_i = tail[i * 4 + 1];
+            Float t_j = tail[i * 4 + 2];
+            Float t_k = tail[i * 4 + 3];
+            Float r_norm = sqrt(r_r * r_r + r_i * r_i + r_j * r_j + r_k * r_k);
+            Float grad = gradient / (r_norm + kEpsilon);
+            // head
+            Float h_r_grad = grad * (r_r * t_r + r_i * t_i + r_j * t_j + r_k * t_k);
+            Float h_i_grad = grad * (-r_i * t_r + r_r * t_i - r_k * t_j + r_j * t_k);
+            Float h_j_grad = grad * (-r_j * t_r + r_k * t_i + r_r * t_j - r_i * t_k);
+            Float h_k_grad = grad * (-r_k * t_r - r_j * t_i + r_i * t_j + r_r * t_k);
+            head[i * 4] -= (optimizer.*update)(h_r, h_r_grad + l3_regularization * abs(h_r) * h_r, weight);
+            head[i * 4 + 1] -= (optimizer.*update)(h_i, h_i_grad + l3_regularization * abs(h_i) * h_i, weight);
+            head[i * 4 + 2] -= (optimizer.*update)(h_j, h_j_grad + l3_regularization * abs(h_j) * h_j, weight);
+            head[i * 4 + 3] -= (optimizer.*update)(h_k, h_k_grad + l3_regularization * abs(h_k) * h_k, weight);
+            // tail
+            Float t_r_grad = grad * (h_r * r_r - h_i * r_i - h_j * r_j - h_k * r_k);
+            Float t_i_grad = grad * (h_r * r_i + h_i * r_r + h_j * r_k - h_k * r_j);
+            Float t_j_grad = grad * (h_r * r_j - h_i * r_k + h_j * r_r + h_k * r_i);
+            Float t_k_grad = grad * (h_r * r_k + h_i * r_j - h_j * r_i + h_k * r_r);
+            tail[i * 4] -= (optimizer.*update)(t_r, t_r_grad + l3_regularization * abs(t_r) * t_r, weight);
+            tail[i * 4 + 1] -= (optimizer.*update)(t_i, t_i_grad + l3_regularization * abs(t_i) * t_i, weight);
+            tail[i * 4 + 2] -= (optimizer.*update)(t_j, t_j_grad + l3_regularization * abs(t_j) * t_j, weight);
+            tail[i * 4 + 3] -= (optimizer.*update)(t_k, t_k_grad + l3_regularization * abs(t_k) * t_k, weight);
+            // relation
+            Float r_r_grad = grad * (h_r * t_r + h_i * t_i + h_j * t_j + h_k * t_k);
+            Float r_i_grad = grad * (-h_i * t_r + h_r * t_i + h_k * t_j - h_j * t_k);
+            Float r_j_grad = grad * (-h_j * t_r - h_k * t_i + h_r * t_j + h_i * t_k);
+            Float r_k_grad = grad * (-h_k * t_r + h_j * t_i - h_i * t_j + h_r * t_k);
+            relation[i * 4] -= relation_lr_multiplier *
+                               (optimizer.*update)(r_r, r_r_grad + l3_regularization * abs(r_r) * r_r, weight);
+            relation[i * 4 + 1] -= relation_lr_multiplier *
+                                   (optimizer.*update)(r_i, r_i_grad + l3_regularization * abs(r_i) * r_i, weight);
+            relation[i * 4 + 2] -= relation_lr_multiplier *
+                                   (optimizer.*update)(r_j, r_j_grad + l3_regularization * abs(r_j) * r_j, weight);
+            relation[i * 4 + 3] -= relation_lr_multiplier *
+                                   (optimizer.*update)(r_k, r_k_grad + l3_regularization * abs(r_k) * r_k, weight);
+        }
+    }
+
+    template<OptimizerType optimizer_type>
+    __host__ __device__
+    static void backward(Vector &head, Vector &tail, Vector &relation,
+                         Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
+        auto update = get_update_function_1_moment<Float, optimizer_type>();
+        l3_regularization *= 3;
+        FOR(i, dim / 4) {
+            Float h_r = head[i * 4];
+            Float h_i = head[i * 4 + 1];
+            Float h_j = head[i * 4 + 2];
+            Float h_k = head[i * 4 + 3];
+            Float r_r = relation[i * 4];
+            Float r_i = relation[i * 4 + 1];
+            Float r_j = relation[i * 4 + 2];
+            Float r_k = relation[i * 4 + 3];
+            Float t_r = tail[i * 4];
+            Float t_i = tail[i * 4 + 1];
+            Float t_j = tail[i * 4 + 2];
+            Float t_k = tail[i * 4 + 3];
+            Float r_norm = sqrt(r_r * r_r + r_i * r_i + r_j * r_j + r_k * r_k);
+            Float grad = gradient / (r_norm + kEpsilon);
+            // head
+            Float h_r_grad = grad * (r_r * t_r + r_i * t_i + r_j * t_j + r_k * t_k);
+            Float h_i_grad = grad * (-r_i * t_r + r_r * t_i - r_k * t_j + r_j * t_k);
+            Float h_j_grad = grad * (-r_j * t_r + r_k * t_i + r_r * t_j - r_i * t_k);
+            Float h_k_grad = grad * (-r_k * t_r - r_j * t_i + r_i * t_j + r_r * t_k);
+            head[i * 4] -= (optimizer.*update)(h_r, h_r_grad + l3_regularization * abs(h_r) * h_r,
+                                               head_moment1[i * 4], weight);
+            head[i * 4 + 1] -= (optimizer.*update)(h_i, h_i_grad + l3_regularization * abs(h_i) * h_i,
+                                                   head_moment1[i * 4 + 1], weight);
+            head[i * 4 + 2] -= (optimizer.*update)(h_j, h_j_grad + l3_regularization * abs(h_j) * h_j,
+                                                   head_moment1[i * 4 + 2], weight);
+            head[i * 4 + 3] -= (optimizer.*update)(h_k, h_k_grad + l3_regularization * abs(h_k) * h_k,
+                                                   head_moment1[i * 4 + 3], weight);
+            // tail
+            Float t_r_grad = grad * (h_r * r_r - h_i * r_i - h_j * r_j - h_k * r_k);
+            Float t_i_grad = grad * (h_r * r_i + h_i * r_r + h_j * r_k - h_k * r_j);
+            Float t_j_grad = grad * (h_r * r_j - h_i * r_k + h_j * r_r + h_k * r_i);
+            Float t_k_grad = grad * (h_r * r_k + h_i * r_j - h_j * r_i + h_k * r_r);
+            tail[i * 4] -= (optimizer.*update)(t_r, t_r_grad + l3_regularization * abs(t_r) * t_r,
+                                               tail_moment1[i * 4], weight);
+            tail[i * 4 + 1] -= (optimizer.*update)(t_i, t_i_grad + l3_regularization * abs(t_i) * t_i,
+                                                   tail_moment1[i * 4 + 1], weight);
+            tail[i * 4 + 2] -= (optimizer.*update)(t_j, t_j_grad + l3_regularization * abs(t_j) * t_j,
+                                                   tail_moment1[i * 4 + 2], weight);
+            tail[i * 4 + 3] -= (optimizer.*update)(t_k, t_k_grad + l3_regularization * abs(t_k) * t_k,
+                                                   tail_moment1[i * 4 + 3], weight);
+            // relation
+            Float r_r_grad = grad * (h_r * t_r + h_i * t_i + h_j * t_j + h_k * t_k);
+            Float r_i_grad = grad * (-h_i * t_r + h_r * t_i + h_k * t_j - h_j * t_k);
+            Float r_j_grad = grad * (-h_j * t_r - h_k * t_i + h_r * t_j + h_i * t_k);
+            Float r_k_grad = grad * (-h_k * t_r + h_j * t_i - h_i * t_j + h_r * t_k);
+            relation[i * 4] -= relation_lr_multiplier *
+                               (optimizer.*update)(r_r, r_r_grad + l3_regularization * abs(r_r) * r_r,
+                                                   relation_moment1[i * 4], weight);
+            relation[i * 4 + 1] -= relation_lr_multiplier *
+                                   (optimizer.*update)(r_i, r_i_grad + l3_regularization * abs(r_i) * r_i,
+                                                       relation_moment1[i * 4 + 1], weight);
+            relation[i * 4 + 2] -= relation_lr_multiplier *
+                                   (optimizer.*update)(r_j, r_j_grad + l3_regularization * abs(r_j) * r_j,
+                                                       relation_moment1[i * 4 + 2], weight);
+            relation[i * 4 + 3] -= relation_lr_multiplier *
+                                   (optimizer.*update)(r_k, r_k_grad + l3_regularization * abs(r_k) * r_k,
+                                                       relation_moment1[i * 4 + 3], weight);
+        }
+    }
+
+    template<OptimizerType optimizer_type>
+    __host__ __device__
+    static void backward(Vector &head, Vector &tail, Vector &relation,
+                         Vector &head_moment1, Vector &tail_moment1, Vector &relation_moment1,
+                         Vector &head_moment2, Vector &tail_moment2, Vector &relation_moment2,
+                         float l3_regularization, Float gradient, const Optimizer &optimizer,
+                         float relation_lr_multiplier = 1, Float weight = 1) {
+        auto update = get_update_function_2_moment<Float, optimizer_type>();
+        l3_regularization *= 3;
+        FOR(i, dim / 4) {
+            Float h_r = head[i * 4];
+            Float h_i = head[i * 4 + 1];
+            Float h_j = head[i * 4 + 2];
+            Float h_k = head[i * 4 + 3];
+            Float r_r = relation[i * 4];
+            Float r_i = relation[i * 4 + 1];
+            Float r_j = relation[i * 4 + 2];
+            Float r_k = relation[i * 4 + 3];
+            Float t_r = tail[i * 4];
+            Float t_i = tail[i * 4 + 1];
+            Float t_j = tail[i * 4 + 2];
+            Float t_k = tail[i * 4 + 3];
+            Float r_norm = sqrt(r_r * r_r + r_i * r_i + r_j * r_j + r_k * r_k);
+            Float grad = gradient / (r_norm + kEpsilon);
+            // head
+            Float h_r_grad = grad * (r_r * t_r + r_i * t_i + r_j * t_j + r_k * t_k);
+            Float h_i_grad = grad * (-r_i * t_r + r_r * t_i - r_k * t_j + r_j * t_k);
+            Float h_j_grad = grad * (-r_j * t_r + r_k * t_i + r_r * t_j - r_i * t_k);
+            Float h_k_grad = grad * (-r_k * t_r - r_j * t_i + r_i * t_j + r_r * t_k);
+            head[i * 4] -= (optimizer.*update)(h_r, h_r_grad + l3_regularization * abs(h_r) * h_r,
+                                               head_moment1[i * 4], head_moment2[i * 4], weight);
+            head[i * 4 + 1] -= (optimizer.*update)(h_i, h_i_grad + l3_regularization * abs(h_i) * h_i,
+                                                   head_moment1[i * 4 + 1], head_moment2[i * 4 + 1], weight);
+            head[i * 4 + 2] -= (optimizer.*update)(h_j, h_j_grad + l3_regularization * abs(h_j) * h_j,
+                                                   head_moment1[i * 4 + 2], head_moment2[i * 4 + 2], weight);
+            head[i * 4 + 3] -= (optimizer.*update)(h_k, h_k_grad + l3_regularization * abs(h_k) * h_k,
+                                                   head_moment1[i * 4 + 3], head_moment2[i * 4 + 3], weight);
+            // tail
+            Float t_r_grad = grad * (h_r * r_r - h_i * r_i - h_j * r_j - h_k * r_k);
+            Float t_i_grad = grad * (h_r * r_i + h_i * r_r + h_j * r_k - h_k * r_j);
+            Float t_j_grad = grad * (h_r * r_j - h_i * r_k + h_j * r_r + h_k * r_i);
+            Float t_k_grad = grad * (h_r * r_k + h_i * r_j - h_j * r_i + h_k * r_r);
+            tail[i * 4] -= (optimizer.*update)(t_r, t_r_grad + l3_regularization * abs(t_r) * t_r,
+                                               tail_moment1[i * 4], tail_moment2[i * 4], weight);
+            tail[i * 4 + 1] -= (optimizer.*update)(t_i, t_i_grad + l3_regularization * abs(t_i) * t_i,
+                                                   tail_moment1[i * 4 + 1], tail_moment2[i * 4 + 1], weight);
+            tail[i * 4 + 2] -= (optimizer.*update)(t_j, t_j_grad + l3_regularization * abs(t_j) * t_j,
+                                                   tail_moment1[i * 4 + 2], tail_moment2[i * 4 + 2], weight);
+            tail[i * 4 + 3] -= (optimizer.*update)(t_k, t_k_grad + l3_regularization * abs(t_k) * t_k,
+                                                   tail_moment1[i * 4 + 3], tail_moment2[i * 4 + 3], weight);
+            // relation
+            Float r_r_grad = grad * (h_r * t_r + h_i * t_i + h_j * t_j + h_k * t_k);
+            Float r_i_grad = grad * (-h_i * t_r + h_r * t_i + h_k * t_j - h_j * t_k);
+            Float r_j_grad = grad * (-h_j * t_r - h_k * t_i + h_r * t_j + h_i * t_k);
+            Float r_k_grad = grad * (-h_k * t_r + h_j * t_i - h_i * t_j + h_r * t_k);
+            relation[i * 4] -= relation_lr_multiplier *
+                               (optimizer.*update)(r_r, r_r_grad + l3_regularization * abs(r_r) * r_r,
+                                                   relation_moment1[i * 4], relation_moment2[i * 4], weight);
+            relation[i * 4 + 1] -= relation_lr_multiplier *
+                                   (optimizer.*update)(r_i, r_i_grad + l3_regularization * abs(r_i) * r_i,
+                                                       relation_moment1[i * 4 + 1], relation_moment2[i * 4 + 1], weight);
+            relation[i * 4 + 2] -= relation_lr_multiplier *
+                                   (optimizer.*update)(r_j, r_j_grad + l3_regularization * abs(r_j) * r_j,
+                                                       relation_moment1[i * 4 + 2], relation_moment2[i * 4 + 2], weight);
+            relation[i * 4 + 3] -= relation_lr_multiplier *
+                                   (optimizer.*update)(r_k, r_k_grad + l3_regularization * abs(r_k) * r_k,
+                                                       relation_moment1[i * 4 + 3], relation_moment2[i * 4 + 3], weight);
         }
     }
 };

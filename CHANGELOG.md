@@ -3,6 +3,12 @@ Change log
 
 Here list all notable changes in GraphVite library.
 
+v0.2.2 - 2020-03-11
+-------------------
+- New model QuatE and its benchmarks on 5 knowledge graph datasets.
+- Add an option to skip `faiss` in compilation.
+- Fix instructions for conda installation.
+
 v0.2.1 - 2019-11-12
 -------------------
 - New dataset `Wikidata5m` and its benchmarks,

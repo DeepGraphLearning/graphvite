@@ -1,0 +1,40 @@
+application:
+  knowledge graph
+
+resource:
+  gpus: []
+  cpu_per_gpu: auto
+  dim: 1024
+
+graph:
+  file_name: <wn18rr.train>
+
+build:
+  optimizer:
+    type: Adam
+    lr: 5.0e-6
+    weight_decay: 0
+  num_partition: auto
+  num_negative: 64
+  batch_size: 100000
+  episode_size: 1
+
+train:
+  model: QuatE
+  num_epoch: 6000
+  l3_regularization: 5.0e-2
+  sample_batch_size: 2000
+  adversarial_temperature: 2
+  log_frequency: 100
+
+evaluate:
+  task: link prediction
+  file_name: <wn18rr.test>
+  filter_files:
+    - <wn18rr.train>
+    - <wn18rr.valid>
+    - <wn18rr.test>
+  # fast_mode: 3000
+
+save:
+  file_name: quate_wn18rr.pkl

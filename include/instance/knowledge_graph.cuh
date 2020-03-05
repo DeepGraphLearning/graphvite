@@ -329,7 +329,8 @@ public:
         float margin_or_l3;
         if (solver->model == "TransE" || solver->model == "RotatE")
             margin_or_l3 = solver->margin;
-        if (solver->model == "DistMult" || solver->model == "ComplEx" || solver->model == "SimplE")
+        if (solver->model == "DistMult" || solver->model == "ComplEx" || solver->model == "SimplE" ||
+                solver->model == "QuatE")
             margin_or_l3 = solver->l3_regularization;
         switch (num_moment) {
             case 0: {
@@ -353,6 +354,10 @@ public:
                 if (solver->model == "RotatE") {
                     if (optimizer.type == "SGD")
                         train = &knowledge_graph::train<Vector, Index, RotatE, kSGD>;
+                }
+                if (solver->model == "QuatE") {
+                    if (optimizer.type == "SGD")
+                        train = &knowledge_graph::train<Vector, Index, QuatE, kSGD>;
                 }
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
@@ -406,6 +411,14 @@ public:
                     if (optimizer.type == "RMSprop")
                         train = &knowledge_graph::train_1_moment<Vector, Index, RotatE, kRMSprop>;
                 }
+                if (solver->model == "QuatE") {
+                    if (optimizer.type == "Momentum")
+                        train = &knowledge_graph::train_1_moment<Vector, Index, QuatE, kMomentum>;
+                    if (optimizer.type == "AdaGrad")
+                        train = &knowledge_graph::train_1_moment<Vector, Index, QuatE, kAdaGrad>;
+                    if (optimizer.type == "RMSprop")
+                        train = &knowledge_graph::train_1_moment<Vector, Index, QuatE, kRMSprop>;
+                }
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
                             (*embeddings[0], *embeddings[1], *embeddings[2],
@@ -438,6 +451,10 @@ public:
                 if (solver->model == "RotatE") {
                     if (optimizer.type == "Adam")
                         train = &knowledge_graph::train_2_moment<Vector, Index, RotatE, kAdam>;
+                }
+                if (solver->model == "QuatE") {
+                    if (optimizer.type == "Adam")
+                        train = &knowledge_graph::train_2_moment<Vector, Index, QuatE, kAdam>;
                 }
                 if (train) {
                     train<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
@@ -474,6 +491,8 @@ public:
             predict = &knowledge_graph::predict<Vector, Index, SimplE>;
         if (solver->model == "RotatE")
             predict = &knowledge_graph::predict<Vector, Index, RotatE>;
+        if (solver->model == "QuatE")
+            predict = &knowledge_graph::predict<Vector, Index, QuatE>;
         if (predict) {
             predict<<<kBlockPerGrid, kThreadPerBlock, 0, work_stream>>>
                     (*embeddings[0], *embeddings[1], *embeddings[2], batch, logits, solver->margin);
@@ -530,7 +549,7 @@ public:
 
     /** Return all available models of the solver */
     inline std::set<std::string> get_available_models() const override {
-        return {"TransE", "RotatE", "DistMult", "ComplEx", "SimplE"};
+        return {"TransE", "RotatE", "DistMult", "ComplEx", "SimplE", "QuatE"};
     }
 
     /** Return the default optimizer type and its hyperparameters */
@@ -576,6 +595,29 @@ public:
                 for (int i = 0; i < dim / 2; i++)
                     embedding[i] = init_phase(seed);
         }
+        if (model == "QuatE") {
+            std::uniform_real_distribution<Float> init_modulus(-1 / sqrt(dim / 2), 1 / sqrt(dim / 2)); // he init
+            std::uniform_real_distribution<Float> init_phase(-kPi, kPi);
+            std::uniform_real_distribution<Float> init(0, 1);
+            std::vector<std::shared_ptr<std::vector<Vector>>> all_embeddings = {entity_embeddings, relation_embeddings};
+            for (auto &&embeddings: all_embeddings)
+                for (auto &&embedding: *embeddings)
+                    for (int i = 0; i < dim / 4; i++) {
+                        Float modulus = init_modulus(seed);
+                        Float phase = init_phase(seed);
+                        Float v_i = init(seed);
+                        Float v_j = init(seed);
+                        Float v_k = init(seed);
+                        Float norm = sqrt(v_i * v_i + v_j * v_j + v_k * v_k);
+                        v_i /= norm + kEpsilon;
+                        v_j /= norm + kEpsilon;
+                        v_k /= norm + kEpsilon;
+                        embedding[i * 4] = modulus * cos(phase);
+                        embedding[i * 4 + 1] = modulus * v_i * sin(phase);
+                        embedding[i * 4 + 2] = modulus * v_j * sin(phase);
+                        embedding[i * 4 + 3] = modulus * v_k * sin(phase);
+                    }
+        }
     }
 
     inline std::string name() const override {
@@ -601,7 +643,7 @@ public:
            << ", relation lr multiplier: " << relation_lr_multiplier << std::endl;
         if (model == "TransE" || model == "RotatE")
             ss << "margin: " << margin << ", positive reuse: " << positive_reuse << std::endl;
-        if (model == "DistMult" || model == "ComplEx" || model == "SimplE")
+        if (model == "DistMult" || model == "ComplEx" || model == "SimplE" || model == "QuatE")
             ss << "l3 regularization: " << l3_regularization << ", positive reuse: " << positive_reuse << std::endl;
         ss << "adversarial temperature: " << adversarial_temperature;
         return ss.str();
@@ -609,12 +651,12 @@ public:
 
     /**
      * @brief Train knowledge graph embeddings
-     * @param _model "TransE", "DistMult", "ComplEx", "SimplE" or "RotatE"
+     * @param _model "TransE", "DistMult", "ComplEx", "SimplE", "RotatE" or "QuatE"
      * @param _num_epoch number of epochs, i.e. #positive edges / |E|
      * @param _resume resume training from learned embeddings or not
      * @param _relation_lr_multiplier learning rate multiplier for relation embeddings
      * @param _margin logit margin (for TransE & RotatE)
-     * @param _l3_regularization l3 regularization (for DistMult, ComplEx & SimplE)
+     * @param _l3_regularization l3 regularization (for DistMult, ComplEx, SimplE & QuatE)
      * @param _sample_batch_size batch size of samples in samplers
      * @param _positive_reuse times of reusing positive samples
      * @param _adversarial_temperature temperature of self-adversarial negative sampling,

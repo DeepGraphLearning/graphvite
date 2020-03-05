@@ -1,0 +1,40 @@
+application:
+  knowledge graph
+
+resource:
+  gpus: []
+  cpu_per_gpu: auto
+  dim: 2048
+
+graph:
+  file_name: <fb15k237.train>
+
+build:
+  optimizer:
+    type: Adam
+    lr: 1.0e-5
+    weight_decay: 0
+  num_partition: auto
+  num_negative: 64
+  batch_size: 100000
+  episode_size: 1
+
+train:
+  model: QuatE
+  num_epoch: 1000
+  l3_regularization: 5.0e-2
+  sample_batch_size: 2000
+  adversarial_temperature: 2
+  log_frequency: 100
+
+evaluate:
+  task: link prediction
+  file_name: <fb15k237.test>
+  filter_files:
+    - <fb15k237.train>
+    - <fb15k237.valid>
+    - <fb15k237.test>
+  # fast_mode: 3000
+
+save:
+  file_name: quate_fb15k-237.pkl

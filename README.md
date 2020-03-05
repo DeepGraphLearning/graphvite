@@ -5,11 +5,12 @@ GraphVite - graph embedding at high speed and large scale
 
 [![Install with conda](https://anaconda.org/milagraph/graphvite/badges/installer/conda.svg)][conda]
 [![License](https://anaconda.org/milagraph/graphvite/badges/license.svg)][license]
+[![Downloads](https://anaconda.org/milagraph/graphvite/badges/downloads.svg)][conda]
 
 [conda]: https://anaconda.org/milagraph/graphvite
 [license]: LICENSE
 
-[Docs] | [Tutorials] | [Benchmarks] | [Pre-trained models]
+[Docs] | [Tutorials] | [Benchmarks] | [Pre-trained Models]
 
 [Docs]: https://graphvite.io/docs/latest/api/application
 [Tutorials]: https://graphvite.io/tutorials
@@ -93,14 +94,14 @@ Installation
 ### From Conda ###
 
 ```bash
-conda install -c milagraph graphvite cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
+conda install -c milagraph -c conda-forge graphvite cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
 ```
 
 If you only need embedding training without evaluation, you can use the following
 alternative with minimal dependencies.
 
 ```bash
-conda install -c milagraph graphvite-mini cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
+conda install -c milagraph -c conda-forge graphvite-mini cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
 ```
 
 ### From Source ###

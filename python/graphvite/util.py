@@ -18,6 +18,7 @@
 from __future__ import print_function, absolute_import
 
 import os
+import sys
 import logging
 import tempfile
 from time import time
@@ -83,7 +84,7 @@ class chdir(object):
         os.chdir(self.old_dir)
 
 
-class SharedNDArray(object):
+class SharedNDArray(np.memmap):
     """
     Shared numpy ndarray with serialization interface.
     This class can be used as a drop-in replacement for arguments in multiprocessing.
@@ -91,29 +92,35 @@ class SharedNDArray(object):
     Parameters:
         array (array-like): input data
     """
-    def __init__(self, array):
+    def __new__(cls, array):
+        if "linux" not in sys.platform:
+            raise EnvironmentError("SharedNDArray only works on Linux")
+
         array = np.asarray(array)
-        self.dtype = array.dtype
-        self.shape = array.shape
-        self.file = tempfile.NamedTemporaryFile()
-        self.buffer = np.memmap(self.file, dtype=self.dtype, shape=self.shape)
-        self.buffer[:] = array
+        file = tempfile.NamedTemporaryFile()
+        self = super(SharedNDArray, cls).__new__(cls, file, dtype=array.dtype, shape=array.shape)
+        # keep reference to the tmp file, otherwise it will be released
+        self.file = file
+        self[:] = array
+        return self
 
-    def __getattr__(self, key):
-        if key in self.__dict__:
-            return self.__dict__[key]
-        else:
-            return getattr(self.buffer, key)
+    @classmethod
+    def from_memmap(cls, *args, **kwargs):
+        return super(SharedNDArray, cls).__new__(cls, *args, **kwargs)
 
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        del state["file"]
-        state["buffer"] = self.buffer.filename
-        return state
+    def __reduce__(self):
+        order = "C" if self.flags["C_CONTIGUOUS"] else "F"
+        return self.__class__.from_memmap, (self.filename, self.dtype, self.mode, self.offset, self.shape, order)
 
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        self.buffer = np.memmap(self.buffer, dtype=self.dtype, shape=self.shape)
+    def __array_wrap__(self, arr, context=None):
+        arr = super(np.memmap, self).__array_wrap__(arr, context)
+
+        if self is arr or type(self) is not SharedNDArray:
+            return arr
+        if arr.shape == ():
+            return arr[()]
+
+        return arr.view(np.ndarray)
 
 
 class Monitor(object):
@@ -130,7 +137,7 @@ class Monitor(object):
         self.name_style = name_style
 
     def get_name(self, function, instance):
-        is_method = len(function.__code__.co_varnames) > 0 and function.__code__.co_varnames[0] == "self"
+        is_method = function.__code__.co_argcount > 0 and function.__code__.co_varnames[0] == "self"
         if self.name_style == "func" or not is_method:
             return "%s" % function.__name__
         if self.name_style == "class":

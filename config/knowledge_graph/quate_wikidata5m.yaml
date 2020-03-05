@@ -1,0 +1,42 @@
+application:
+  knowledge graph
+
+resource:
+  gpus: []
+  cpu_per_gpu: auto
+  dim: 512
+
+graph:
+  file_name: <wikidata5m.train>
+  normalization: true
+
+build:
+  optimizer:
+    type: SGD
+    lr: 1.0
+    weight_decay: 0
+  num_partition: auto
+  num_negative: 64
+  batch_size: 100000
+  episode_size: 200
+
+train:
+  model: QuatE
+  num_epoch: 2000
+  l3_regularization: 5.0e-3
+  sample_batch_size: 2000
+  adversarial_temperature: 10
+  relation_lr_multiplier: 1.0e-4
+  log_frequency: 500
+
+evaluate:
+  task: link prediction
+  file_name: <wikidata5m.test>
+  filter_files:
+    - <wikidata5m.train>
+    - <wikidata5m.valid>
+    - <wikidata5m.test>
+  # fast_mode: 1000
+
+save:
+  file_name: quate_wikidata5m.pkl

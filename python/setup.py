@@ -37,7 +37,7 @@ for path, dirs, files in os.walk(os.path.join(project_path, "config")):
 setup(
     name=name,
     version=__version__,
-    description="",
+    description="A general and high-performance graph embedding system for various applications",
     packages=find_packages(),
     data_files=data_files,
     entry_points={"console_scripts": ["graphvite = graphvite.cmd:main"]},

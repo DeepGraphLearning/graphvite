@@ -100,8 +100,8 @@ than 200 GiB memory to build alias tables for the 2nd order random walks.
 Knowledge Graph Embedding
 -------------------------
 
-For knowledge graph embedding, we benchmark `TransE`_, `DistMult`_, `ComplEx`_ and
-`RotatE`_ on 5 standard datasets. The training time, evaluation time and resource of
+For knowledge graph embedding, we benchmark `TransE`_, `DistMult`_, `ComplEx`_, `SimplE`_,
+`RotatE`_ and `QuatE`_ on 5 standard datasets. The training time, evaluation time and resource of
 `RotatE`_ on these datasets are given in the following table.
 
 +---------------------+-------+-------+-------+----------------------------+-----------------+
@@ -135,6 +135,8 @@ are computed based on filtered results.
 +-------------+-----+-------+---------+---------+----------+
 | `RotatE`_   | 36  | 0.767 | 0.687   | 0.830   | 0.891    |
 +-------------+-----+-------+---------+---------+----------+
+| `QuatE`_    | 48  | 0.777 | 0.716   | 0.818   | 0.880    |
++-------------+-----+-------+---------+---------+----------+
 
 .. seealso::
     Configuration files:
@@ -143,6 +145,7 @@ are computed based on filtered results.
     :download:`complex_fb15k.yaml<../../config/knowledge_graph/complex_fb15k.yaml>`
     :download:`simple_fb15k.yaml<../../config/knowledge_graph/simple_fb15k.yaml>`
     :download:`rotate_fb15k.yaml<../../config/knowledge_graph/rotate_fb15k.yaml>`
+    :download:`quate_fb15k.yaml<../../config/knowledge_graph/quate_fb15k.yaml>`
 
 +--------------+-----+-------+---------+---------+----------+
 | `FB15k-237`_ | MR  | MRR   | HITS\@1 | HITS\@3 | HITS\@10 |
@@ -157,6 +160,8 @@ are computed based on filtered results.
 +--------------+-----+-------+---------+---------+----------+
 | `RotatE`_    | 201 | 0.314 | 0.218   | 0.348   | 0.506    |
 +--------------+-----+-------+---------+---------+----------+
+| `QuatE`_     | 182 | 0.304 | 0.208   | 0.339   | 0.500    |
++--------------+-----+-------+---------+---------+----------+
 
 .. seealso::
     Configuration files:
@@ -165,6 +170,7 @@ are computed based on filtered results.
     :download:`complex_fb15k-237.yaml<../../config/knowledge_graph/complex_fb15k-237.yaml>`
     :download:`simple_fb15k-237.yaml<../../config/knowledge_graph/simple_fb15k-237.yaml>`
     :download:`rotate_fb15k-237.yaml<../../config/knowledge_graph/rotate_fb15k-237.yaml>`
+    :download:`quate_fb15k-237.yaml<../../config/knowledge_graph/quate_fb15k-237.yaml>`
 
 +-------------+------+-------+---------+---------+----------+
 | `WN18`_     | MR   | MRR   | HITS\@1 | HITS\@3 | HITS\@10 |
@@ -179,6 +185,8 @@ are computed based on filtered results.
 +-------------+------+-------+---------+---------+----------+
 | `RotatE`_   | 303  | 0.948 | 0.924   | 0.950   | 0.957    |
 +-------------+------+-------+---------+---------+----------+
+| `QuatE`_    | 544  | 0.947 | 0.943   | 0.950   | 0.954    |
++-------------+------+-------+---------+---------+----------+
 
 .. seealso::
     Configuration files:
@@ -187,6 +195,7 @@ are computed based on filtered results.
     :download:`complex_wn18.yaml<../../config/knowledge_graph/complex_wn18.yaml>`
     :download:`simple_wn18.yaml<../../config/knowledge_graph/simple_wn18.yaml>`
     :download:`rotate_wn18.yaml<../../config/knowledge_graph/rotate_wn18.yaml>`
+    :download:`quate_wn18.yaml<../../config/knowledge_graph/quate_wn18.yaml>`
 
 +-------------+-------+-------+---------+---------+----------+
 | `WN18RR`_   | MR    | MRR   | HITS\@1 | HITS\@3 | HITS\@10 |
@@ -201,6 +210,8 @@ are computed based on filtered results.
 +-------------+-------+-------+---------+---------+----------+
 | `RotatE`_   | 2359  | 0.500 | 0.455   | 0.518   | 0.589    |
 +-------------+-------+-------+---------+---------+----------+
+| `QuatE`_    | 5775  | 0.477 | 0.448   | 0.491   | 0.532    |
++-------------+-------+-------+---------+---------+----------+
 
 .. seealso::
     Configuration files:
@@ -209,6 +220,7 @@ are computed based on filtered results.
     :download:`complex_wn18rr.yaml<../../config/knowledge_graph/complex_wn18rr.yaml>`
     :download:`simple_wn18rr.yaml<../../config/knowledge_graph/simple_wn18rr.yaml>`
     :download:`rotate_wn18rr.yaml<../../config/knowledge_graph/rotate_wn18rr.yaml>`
+    :download:`quate_wn18rr.yaml<../../config/knowledge_graph/quate_wn18rr.yaml>`
 
 +---------------+--------+-------+---------+---------+----------+
 | `Wikidata5m`_ | MR     | MRR   | HITS\@1 | HITS\@3 | HITS\@10 |
@@ -223,6 +235,8 @@ are computed based on filtered results.
 +---------------+--------+-------+---------+---------+----------+
 | `RotatE`_     | 89459  | 0.290 | 0.234   | 0.322   | 0.390    |
 +---------------+--------+-------+---------+---------+----------+
+| `QuatE`_      | 97372  | 0.276 | 0.227   | 0.301   | 0.359    |
++---------------+--------+-------+---------+---------+----------+
 
 .. seealso::
     Configuration files:
@@ -231,6 +245,7 @@ are computed based on filtered results.
     :download:`complex_wikidata5m.yaml<../../config/knowledge_graph/complex_wikidata5m.yaml>`
     :download:`simple_wikidata5m.yaml<../../config/knowledge_graph/simple_wikidata5m.yaml>`
     :download:`rotate_wikidata5m.yaml<../../config/knowledge_graph/rotate_wikidata5m.yaml>`
+    :download:`quate_wikidata5m.yaml<../../config/knowledge_graph/quate_wikidata5m.yaml>`
 
 Graph & High-dimensional Data Visualization
 -------------------------------------------

@@ -22,8 +22,10 @@
 #include <unordered_map>
 #include <cuda_runtime.h>
 #include <pybind11/numpy.h>
+#ifndef NO_FAISS
 #include "faiss/gpu/GpuIndexFlat.h"
 #include "faiss/gpu/StandardGpuResources.h"
+#endif
 
 #include "graph.cuh"
 #include "core/solver.h"
@@ -62,25 +64,33 @@ public:
 
     KNNGraph *graph;
     int device_id;
+#ifndef NO_FAISS
     faiss::gpu::StandardGpuResources resources;
     faiss::gpu::GpuIndexFlatConfig config;
     std::shared_ptr<faiss::gpu::GpuIndexFlatL2> index;
+#endif
 
     KNNWorker(KNNGraph *_graph, int _device_id) :
             graph(_graph), device_id(_device_id) {
+#ifndef NO_FAISS
         config.device = device_id;
+#endif
     }
 
     void build() {
+#ifndef NO_FAISS
         index = std::make_shared<faiss::gpu::GpuIndexFlatL2>(&resources, graph->dim, config);
+#endif
     }
 
     void search(Index start, Index end) {
+#ifndef NO_FAISS
         index->add(graph->num_vertex, graph->vectors.data());
         // faiss returns squared l2 distances
         index->search(end - start, &graph->vectors[start], graph->num_neighbor + 1,
                       &graph->distances[start], &graph->labels[start]);
         index->reset();
+#endif
     }
 };
 
@@ -108,8 +118,10 @@ public:
     bool vector_normalization;
     int num_worker, num_thread;
     std::vector<float> vectors;
+#ifndef NO_FAISS
     std::vector<faiss::Index::distance_t> distances;
     std::vector<faiss::Index::idx_t> labels;
+#endif
     std::vector<KNNWorker *> workers;
 
     /**
@@ -131,6 +143,9 @@ public:
         num_thread = num_thread_per_worker * num_worker;
         LOG_IF(WARNING, num_thread > std::thread::hardware_concurrency())
                 << "#CPU threads is beyond the hardware concurrency";
+#ifdef NO_FAISS
+        LOG(FATAL) << "GraphVite is not compiled with FAISS enabled";
+#endif
         for (auto &&device_id : device_ids)
             workers.push_back(new KNNWorker(this, device_id));
     }
@@ -179,6 +194,7 @@ public:
 
     /** Compute the weight for each edge. This function can be parallelized. */
     void compute_weight(Index start, Index end) {
+#ifndef NO_FAISS
         for (Index i = start; i < end; i++) {
             vertex_edges[i].resize(num_neighbor);
             for (int j = 0; j < num_neighbor; j++) {
@@ -217,6 +233,7 @@ public:
             }
             vertex_weights[i] = 1;
         }
+#endif
     }
 
     /** Symmetrize the graph. This function can be parallelized. */
@@ -237,6 +254,7 @@ public:
 
     /** Build the KNN graph from input vectors */
     void build() {
+#ifndef NO_FAISS
         num_vertex = vectors.size() / dim;
         num_edge = num_vertex * num_neighbor;
 
@@ -277,6 +295,7 @@ public:
                                            std::min(work_load * (i + 1), num_vertex));
         for (auto &&thread : build_threads)
             thread.join();
+#endif
     }
 
     /**

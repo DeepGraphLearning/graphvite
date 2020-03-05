@@ -20,16 +20,6 @@ If you find GraphVite helps your research, please cite it in your publications.
         organization={ACM}
     }
 
-Why is there a ``PackagesNotFoundError`` in conda installation?
----------------------------------------------------------------
-
-Some dependencies of the library aren't present in the default channels of conda.
-Config your conda with the following command, and try installation again.
-
-.. code-block:: bash
-
-    conda config --add channels conda-forge
-
 Why is my CUDA driver version insufficient for CUDA runtime version?
 --------------------------------------------------------------------
 
@@ -39,7 +29,7 @@ package by
 
 .. code-block:: bash
 
-    conda install -c milagraph graphvite cudatoolkit=x.x
+    conda install -c milagraph -c conda-forge graphvite cudatoolkit=x.x
 
 where ``x.x`` is your CUDA version, e.g. 9.2 or 10.0.
 
@@ -73,3 +63,9 @@ The compilation can be accelerated by reducing the number of template instantiat
 You can pass ``-DFAST_COMPILE=True`` to cmake, which will only compile commonly used
 embedding dimensions. You may also comment out unnecessary instantiations in
 ``src/graphvite.cu`` for further speed-up.
+
+How can I solve the BLAS issue in ``faiss``?
+--------------------------------------------
+
+``faiss`` is only required by the visualization application in GraphVite. If you do
+not need visualization, you can pass ``-DNO_FAISS=True`` to cmake to skip that.

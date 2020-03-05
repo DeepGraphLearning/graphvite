@@ -13,7 +13,7 @@ To install GraphVite from ``conda``, you only need one line.
 
 .. code-block:: bash
 
-    conda install -c milagraph graphvite cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
+    conda install -c milagraph -c conda-forge graphvite cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
 
 By default, this will install all dependencies, including ``PyTorch`` and
 ``matplotlib``. If you only need embedding training without evaluation, there is an
@@ -21,7 +21,7 @@ alternative with minimum dependencies.
 
 .. code-block:: bash
 
-    conda install -c milagraph graphvite-mini cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
+    conda install -c milagraph -c conda-forge graphvite-mini cudatoolkit=$(nvcc -V | grep -Po "(?<=V)\d+.\d+")
 
 Install from source
 -------------------

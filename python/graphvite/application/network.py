@@ -124,3 +124,20 @@ class LinkPredictor(nn.Module):
         x = heads * relations * tails
         score = x.sum(dim=1)
         return score
+
+    @staticmethod
+    def QuatE(heads, relations, tails):
+        dim = heads.size(1) // 4
+
+        head_r, head_i, head_j, head_k = heads.view(-1, dim, 4).permute(2, 0, 1)
+        tail_r, tail_i, tail_j, tail_k = tails.view(-1, dim, 4).permute(2, 0, 1)
+        relation_r, relation_i, relation_j, relation_k = relations.view(-1, dim, 4).permute(2, 0, 1)
+
+        relation_norm = relations.view(-1, dim, 4).norm(p=2, dim=2)
+        x_r = head_r * relation_r - head_i * relation_i - head_j * relation_j - head_k * relation_k
+        x_i = head_r * relation_i + head_i * relation_r + head_j * relation_k - head_k * relation_j
+        x_j = head_r * relation_j - head_i * relation_k + head_j * relation_r + head_k * relation_i
+        x_k = head_r * relation_k + head_i * relation_j - head_j * relation_i + head_k * relation_r
+        x = (x_r * tail_r + x_i * tail_i + x_j * tail_j + x_k * tail_k) / (relation_norm + 1e-15)
+        score = x.sum(dim=1)
+        return score

@@ -411,8 +411,8 @@ class BlogCatalog(Dataset):
         super(BlogCatalog, self).__init__(
             "blogcatalog",
             urls={
-                "graph": "http://socialcomputing.asu.edu/uploads/1283153973/BlogCatalog-dataset.zip",
-                "label": "http://socialcomputing.asu.edu/uploads/1283153973/BlogCatalog-dataset.zip",
+                "graph": "https://www.dropbox.com/s/cf21ouuzd563cqx/BlogCatalog-dataset.zip?dl=1",
+                "label": "https://www.dropbox.com/s/cf21ouuzd563cqx/BlogCatalog-dataset.zip?dl=1",
                 "train": [], # depends on `graph`
                 "valid": [], # depends on `graph`
                 "test": [] # depends on `graph`
@@ -554,7 +554,7 @@ class Wikipedia(Dataset):
         super(Wikipedia, self).__init__(
             "wikipedia",
             urls={
-                "graph": "https://www.dropbox.com/s/mwt4uu1qu9fflfk/enwiki-latest-pages-articles-sentences.txt.gz?dl=1"
+                "graph": "https://www.dropbox.com/s/q6w950e5f7g7ax8/enwiki-latest-pages-articles-sentences.txt.gz?dl=1"
             }
         )
 

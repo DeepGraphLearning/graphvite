@@ -89,21 +89,23 @@ endif()
 
 # faiss
 if (NOT FAISS_PATH)
-    ExternalProject_Add(faiss
-            GIT_REPOSITORY      https://github.com/facebookresearch/faiss.git
-            UPDATE_DISCONNECTED ${SKIP_UPDATE}
-            PREFIX              faiss
-            SOURCE_DIR          ${EXTERNAL_DIR}/faiss
-            BINARY_DIR          ${EXTERNAL_DIR}/faiss
-            INSTALL_DIR         ${PROJECT_BINARY_DIR}/faiss
-            CONFIGURE_COMMAND   test -e makefile.inc ||
-                                ${EXTERNAL_DIR}/faiss/configure --with-cuda=${CUDA_ROOT} --with-cuda-arch=${CUDA_ARCH}
-            BUILD_COMMAND       test -e libfaiss.so || make -j
-            INSTALL_COMMAND     test -e ${PROJECT_BINARY_DIR}/faiss/include/faiss/gpu/GpuIndexFlat.h ||
-                                make install prefix=${PROJECT_BINARY_DIR}/faiss)
-    include_directories(${PROJECT_BINARY_DIR}/faiss/include)
-    link_directories(${PROJECT_BINARY_DIR}/faiss/lib)
-    set(FAISS_LIBRARY ${PROJECT_BINARY_DIR}/faiss/lib/libfaiss.so)
+    if (NOT NO_FAISS)
+        ExternalProject_Add(faiss
+                GIT_REPOSITORY      https://github.com/facebookresearch/faiss.git
+                UPDATE_DISCONNECTED ${SKIP_UPDATE}
+                PREFIX              faiss
+                SOURCE_DIR          ${EXTERNAL_DIR}/faiss
+                BINARY_DIR          ${EXTERNAL_DIR}/faiss
+                INSTALL_DIR         ${PROJECT_BINARY_DIR}/faiss
+                CONFIGURE_COMMAND   test -e makefile.inc ||
+                                    ${EXTERNAL_DIR}/faiss/configure --with-cuda=${CUDA_ROOT} --with-cuda-arch=${CUDA_ARCH}
+                BUILD_COMMAND       test -e libfaiss.so || make -j
+                INSTALL_COMMAND     test -e ${PROJECT_BINARY_DIR}/faiss/include/faiss/gpu/GpuIndexFlat.h ||
+                                    make install prefix=${PROJECT_BINARY_DIR}/faiss)
+        include_directories(${PROJECT_BINARY_DIR}/faiss/include)
+        link_directories(${PROJECT_BINARY_DIR}/faiss/lib)
+        set(FAISS_LIBRARY ${PROJECT_BINARY_DIR}/faiss/lib/libfaiss.so)
+    endif()
 else()
     get_filename_component(FAISS_PARENT ${FAISS_PATH} DIRECTORY)
     include_directories(${FAISS_PARENT})
@@ -125,10 +127,12 @@ set(CMAKE_CUDA_FLAGS_DEBUG "-g -G")
 set(CMAKE_CUDA_FLAGS_RELEASE "-O3")
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} ${CUDA_ARCH}")
 
-if (FAST_COMPILE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFAST_COMPILE")
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DFAST_COMPILE")
-endif()
+foreach (MACRO FAST_COMPILE NO_FAISS)
+    if (${${MACRO}})
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D${MACRO}")
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -D${MACRO}")
+    endif()
+endforeach()
 
 # output directory
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)

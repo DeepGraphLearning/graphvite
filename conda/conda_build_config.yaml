@@ -12,6 +12,7 @@ numpy:
 cudatoolkit:
   - 9.2
   - 10.0
+  - 10.1
 
 pin_run_as_build:
   cudatoolkit:

@@ -450,7 +450,7 @@ public:
             py::arg("graph"), py::arg("optimizer") = graphvite::Optimizer(graphvite::kAuto),
             py::arg("num_partition") = graphvite::kAuto, py::arg("num_negative") = 1, py::arg("batch_size") = 100000,
             py::arg("episode_size") = graphvite::kAuto,
-            "build(graph, optimizer=auto, num_partition=auto, num_negative=1, batch_size=1e5, episode_size=auto)"
+            "build(graph, optimizer=auto, num_partition=auto, num_negative=1, batch_size=100000, episode_size=auto)"
             R"(
             Determine and allocate all resources for the solver.
 
@@ -580,7 +580,7 @@ public:
             py::arg("graph"), py::arg("optimizer") = graphvite::Optimizer(graphvite::kAuto),
             py::arg("num_partition") = graphvite::kAuto, py::arg("num_negative") = 64, py::arg("batch_size") = 100000,
             py::arg("episode_size") = graphvite::kAuto,
-            "build(graph, optimizer=auto, num_partition=auto, num_negative=64, batch_size=1e5, episode_size=auto)"
+            "build(graph, optimizer=auto, num_partition=auto, num_negative=64, batch_size=100000, episode_size=auto)"
             R"(
             Determine and allocate all resources for the solver.
 
@@ -605,12 +605,12 @@ public:
             Train knowledge graph embeddings.
 
             Parameters:
-                model (str, optional): 'TransE', 'DistMult', 'ComplEx', 'SimplE' or 'RotatE'
+                model (str, optional): 'TransE', 'DistMult', 'ComplEx', 'SimplE', 'RotatE' or 'QuatE'
                 num_epoch (int, optional): number of epochs, i.e. #positive edges / \|E\|
                 resume (bool, optional): resume training from learned embeddings or not
                 relation_lr_multiplier (float, optional): learning rate multiplier for relation embeddings
                 margin (float, optional): logit margin (for TransE & RotatE)
-                l3_regularization (float, optional): L3 regularization (for DistMult, ComplEx & SimplE)
+                l3_regularization (float, optional): L3 regularization (for DistMult, ComplEx, SimplE & QuatE)
                 sample_batch_size (int, optional): batch size of samples in samplers
                 positive_reuse (int, optional): times of reusing positive samples
                 adversarial_temperature (float, optional): temperature of self-adversarial negative sampling,
@@ -701,7 +701,7 @@ public:
             py::arg("graph"), py::arg("optimizer") = graphvite::Optimizer(graphvite::kAuto),
             py::arg("num_partition") = graphvite::kAuto, py::arg("num_negative") = 5, py::arg("batch_size") = 100000,
             py::arg("episode_size") = graphvite::kAuto,
-            "build(graph, optimizer=auto, num_partition=auto, num_negative=5, batch_size=1e5, episode_size=auto)"
+            "build(graph, optimizer=auto, num_partition=auto, num_negative=5, batch_size=100000, episode_size=auto)"
             R"(
             Determine and allocate all resources for the solver.
 

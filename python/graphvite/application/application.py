@@ -472,7 +472,6 @@ def linear_classification(args):
         return torch.as_tensor(new_indexes), torch.as_tensor(new_labels)
 
     embeddings, labels, portion, normalization, times, patience, gpu = args
-    embeddings = np.asarray(embeddings)
     num_sample, num_class = labels.shape
     num_train = int(num_sample * portion)
 
@@ -589,6 +588,7 @@ class KnowledgeGraphApplication(ApplicationMixin):
         - ComplEx (`Complex Embeddings for Simple Link Prediction`_)
         - SimplE (`SimplE Embedding for Link Prediction in Knowledge Graphs`_)
         - RotatE (`RotatE: Knowledge Graph Embedding by Relational Rotation in Complex Space`_)
+        - QuatE (`Quaternion Knowledge Graph Embeddings`)
 
     .. _Translating Embeddings for Modeling Multi-relational Data:
         http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-relational-data.pdf
@@ -600,6 +600,8 @@ class KnowledgeGraphApplication(ApplicationMixin):
         https://papers.nips.cc/paper/7682-simple-embedding-for-link-prediction-in-knowledge-graphs.pdf
     .. _RotatE\: Knowledge Graph Embedding by Relational Rotation in Complex Space:
         https://arxiv.org/pdf/1902.10197.pdf
+    .. _Quaternion Knowledge Graph Embeddings:
+        https://papers.nips.cc/paper/8541-quaternion-knowledge-graph-embeddings.pdf
 
     Parameters:
         dim (int): dimension of embeddings
@@ -609,7 +611,8 @@ class KnowledgeGraphApplication(ApplicationMixin):
         index_type (dtype, optional): type of graph indexes
 
     Note:
-        The implementation of TransE, DistMult and ComplEx, SimplE are slightly different from their original papers.
+        The implementation of TransE, DistMult, ComplEx, SimplE and QuatE are slightly different from their original
+        papers.
         The loss function and the regularization term generally follow `this repo`_.
         Self-adversarial negative sampling is also adopted in these models like RotatE.
 
@@ -1000,8 +1003,6 @@ def triplet_prediction(args):
 
     entity_embeddings, relation_embeddings, H, R, T, \
     exclude_H, exclude_T, target, k, score_function, margin, device = args
-    entity_embeddings = np.asarray(entity_embeddings)
-    relation_embeddings = np.asarray(relation_embeddings)
     num_entity = len(entity_embeddings)
     score_function = LinkPredictor(score_function, entity_embeddings, relation_embeddings, entity_embeddings,
                                    margin=margin)
