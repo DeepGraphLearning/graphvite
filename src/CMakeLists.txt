@@ -8,6 +8,9 @@ else ()
             LINK_FLAGS              "-flto -Wl,-rpath=$ORIGIN"
             OUTPUT_NAME             graphvite)
 
-    target_link_libraries(graphvite pthread curand glog.so faiss.so)
+    target_link_libraries(graphvite pthread curand glog.so)
+    if (FAISS_LIBRARY)
+        target_link_libraries(graphvite faiss.so)
+    endif()
     target_compile_options(graphvite PRIVATE "-Xcompiler=-fno-fat-lto-objects") # -flto
 endif ()
