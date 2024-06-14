@@ -3,7 +3,7 @@
 GraphVite - graph embedding at high speed and large scale
 =========================================================
 
-[![Install with conda](https://anaconda.org/milagraph/graphvite/badges/installer/conda.svg)][conda]
+[![Install with conda](https://anaconda.org/milagraph/graphvite/badges/version.svg)][conda]
 [![License](https://anaconda.org/milagraph/graphvite/badges/license.svg)][license]
 [![Downloads](https://anaconda.org/milagraph/graphvite/badges/downloads.svg)][conda]
 
